@@ -43,6 +43,8 @@ cargo run -- <db_directory> [options]
 | `-lnl`, `--leveled-num-levels` | Number of levels for leveled compaction | `4` |
 | `-ll0`, `--leveled-l0-threshold` | L0 file count before compaction (leveled only) | `4` |
 | `-ll1`, `--leveled-l1-max-bytes` | L1 max size in bytes; each subsequent level is 10× larger (leveled only) | `10485760` (10 MB) |
+| `-rts`, `--read-timeout-secs` | Read timeout per connection in seconds. `0` disables | `30` |
+| `-mc`, `--max-connections` | Maximum concurrent connections. `0` = unlimited | `1000` |
 
 ### Examples
 

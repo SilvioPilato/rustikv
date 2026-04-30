@@ -47,6 +47,8 @@ Before every commit, run these commands **in order** and ensure each one passes:
 
 Do **not** commit or open a PR until all three pass. If a step fails, fix the issue and re-run from that step.
 
+Before opening a PR, also check `README.md` — if the change adds or modifies CLI flags, commands, or user-visible behaviour, update the relevant section of the README.
+
 ## Project Structure
 
 | Path | Purpose |
