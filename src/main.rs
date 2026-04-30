@@ -9,6 +9,7 @@ use rustikv::size_tiered::SizeTiered;
 use rustikv::stats::Stats;
 use std::env;
 use std::io::{self};
+use std::time::Duration;
 use std::{
     io::{BufReader, Read, Write},
     net::{TcpListener, TcpStream},
@@ -102,7 +103,23 @@ fn main() -> io::Result<()> {
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
+                if settings.read_timeout_secs > 0 {
+                    stream
+                        .set_read_timeout(Some(Duration::from_secs(settings.read_timeout_secs)))?;
+                }
                 log_verbose(format!("New connection: {}", stream.peer_addr().unwrap()));
+                if settings.max_connections > 0
+                    && stats.active_connections.load(Ordering::Relaxed)
+                        >= settings.max_connections as i64
+                {
+                    let error_text = format!(
+                        "Rejecting client, max connections reached: {}",
+                        stats.active_connections.load(Ordering::Relaxed)
+                    );
+                    log_verbose(&error_text);
+                    let _ = stream.write_all(&encode_frame(ResponseStatus::Error, &[error_text]));
+                    continue;
+                }
                 let shared_db = Arc::clone(&database);
                 let shared_stats = Arc::clone(&stats);
                 thread::spawn(move || {
@@ -162,7 +179,16 @@ fn handle_stream_inner(
         let mut len_buf = [0u8; 4];
 
         match buf_stream.read_exact(&mut len_buf) {
-            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => break, // client disconnected
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::UnexpectedEof
+                        | io::ErrorKind::WouldBlock
+                        | io::ErrorKind::TimedOut
+                ) =>
+            {
+                break;
+            } // client disconnected or timed out
             Err(e) => return Err(e),
             Ok(()) => {}
         }

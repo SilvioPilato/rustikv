@@ -6,14 +6,15 @@
 //! Runs sequential WRITE then READ phases, collecting per-op timings and
 //! reporting throughput + latency (min/mean/p99/max).
 
-use std::{
-    fs, io, time::{Duration, Instant},
-};
+use rustikv::engine::StorageEngine;
 use rustikv::kvengine::KVEngine;
 use rustikv::lsmengine::LsmEngine;
-use rustikv::engine::StorageEngine;
-use rustikv::size_tiered::SizeTiered;
 use rustikv::settings::FSyncStrategy;
+use rustikv::size_tiered::SizeTiered;
+use std::{
+    fs, io,
+    time::{Duration, Instant},
+};
 
 trait BenchEngine: Sync + Send {
     fn name(&self) -> &str;
@@ -26,7 +27,9 @@ struct LsmEngineAdapter {
 }
 
 impl BenchEngine for LsmEngineAdapter {
-    fn name(&self) -> &str { "rustikv-lsm" }
+    fn name(&self) -> &str {
+        "rustikv-lsm"
+    }
     fn write(&self, key: &[u8], value: &[u8]) -> io::Result<()> {
         let k = String::from_utf8_lossy(key).into_owned();
         let v = String::from_utf8_lossy(value).into_owned();
@@ -43,7 +46,9 @@ struct KvEngineAdapter {
 }
 
 impl BenchEngine for KvEngineAdapter {
-    fn name(&self) -> &str { "rustikv-kv" }
+    fn name(&self) -> &str {
+        "rustikv-kv"
+    }
     fn write(&self, key: &[u8], value: &[u8]) -> io::Result<()> {
         let k = String::from_utf8_lossy(key).into_owned();
         let v = String::from_utf8_lossy(value).into_owned();
@@ -55,25 +60,27 @@ impl BenchEngine for KvEngineAdapter {
     }
 }
 
-
 struct SledAdapter {
     db: sled::Db,
 }
 
 impl BenchEngine for SledAdapter {
-    fn name(&self) -> &str { "sled" }
+    fn name(&self) -> &str {
+        "sled"
+    }
     fn write(&self, key: &[u8], value: &[u8]) -> io::Result<()> {
-        self.db.insert(key, value)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{:?}", e)))?;
+        self.db
+            .insert(key, value)
+            .map_err(|e| io::Error::other(format!("{:?}", e)))?;
         Ok(())
     }
     fn read(&self, key: &[u8]) -> io::Result<bool> {
-        self.db.get(key)
+        self.db
+            .get(key)
             .map(|opt| opt.is_some())
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{:?}", e)))
+            .map_err(|e| io::Error::other(format!("{:?}", e)))
     }
 }
-
 
 #[derive(Debug)]
 struct LatencyStats {
@@ -104,7 +111,8 @@ impl LatencyStats {
         };
 
         let p99_idx = (count as f64 * 0.99) as usize;
-        let p99 = sorted.get(p99_idx.min(sorted.len().saturating_sub(1)))
+        let p99 = sorted
+            .get(p99_idx.min(sorted.len().saturating_sub(1)))
             .copied()
             .unwrap_or(Duration::ZERO);
 
@@ -173,25 +181,17 @@ fn create_kv_engine(db_path: &str) -> io::Result<KvEngineAdapter> {
     let _ = fs::remove_dir_all(db_path);
     fs::create_dir_all(db_path)?;
 
-    let engine = KVEngine::new(
-        db_path,
-        "bench",
-        52_428_800,
-        FSyncStrategy::Never,
-    )?;
+    let engine = KVEngine::new(db_path, "bench", 52_428_800, FSyncStrategy::Never)?;
     Ok(KvEngineAdapter { engine })
 }
-
 
 fn create_sled(db_path: &str) -> io::Result<SledAdapter> {
     let _ = fs::remove_dir_all(db_path);
     fs::create_dir_all(db_path)?;
 
-    let db = sled::open(db_path)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{:?}", e)))?;
+    let db = sled::open(db_path).map_err(|e| io::Error::other(format!("{:?}", e)))?;
     Ok(SledAdapter { db })
 }
-
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -243,24 +243,18 @@ fn main() -> io::Result<()> {
         let db_path_str = db_path.to_string_lossy();
 
         match engine_name {
-            "lsm" => {
-                match create_lsm_engine(&db_path_str) {
-                    Ok(engine) => benchmark_engine(&engine, engine_name, &keys, &values)?,
-                    Err(e) => eprintln!("Failed to create LSM engine: {}", e),
-                }
-            }
-            "kv" => {
-                match create_kv_engine(&db_path_str) {
-                    Ok(engine) => benchmark_engine(&engine, engine_name, &keys, &values)?,
-                    Err(e) => eprintln!("Failed to create KV engine: {}", e),
-                }
-            }
-            "sled" => {
-                match create_sled(&db_path_str) {
-                    Ok(engine) => benchmark_engine(&engine, engine_name, &keys, &values)?,
-                    Err(e) => eprintln!("Failed to create sled: {}", e),
-                }
-            }
+            "lsm" => match create_lsm_engine(&db_path_str) {
+                Ok(engine) => benchmark_engine(&engine, engine_name, &keys, &values)?,
+                Err(e) => eprintln!("Failed to create LSM engine: {}", e),
+            },
+            "kv" => match create_kv_engine(&db_path_str) {
+                Ok(engine) => benchmark_engine(&engine, engine_name, &keys, &values)?,
+                Err(e) => eprintln!("Failed to create KV engine: {}", e),
+            },
+            "sled" => match create_sled(&db_path_str) {
+                Ok(engine) => benchmark_engine(&engine, engine_name, &keys, &values)?,
+                Err(e) => eprintln!("Failed to create sled: {}", e),
+            },
             _ => eprintln!("Unknown engine: {}", engine_name),
         }
 

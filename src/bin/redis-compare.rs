@@ -11,12 +11,12 @@
 //! **Output:** Throughput + latency (min/mean/p99/max) for WRITE and READ phases,
 //! followed by a comparison showing rustikv's performance as % of Redis.
 
+use rustikv::bffp::{Command, ResponseStatus, decode_response_frame, encode_command};
 use std::{
     io::{self, Read, Write},
     net::TcpStream,
     time::{Duration, Instant},
 };
-use rustikv::bffp::{Command, ResponseStatus, decode_response_frame, encode_command};
 
 #[derive(Debug)]
 struct PhaseResult {
@@ -53,7 +53,8 @@ fn compute_stats(r: &mut PhaseResult) -> Stats {
     };
 
     let p99_idx = (count as f64 * 0.99) as usize;
-    let p99 = sorted.get(p99_idx.min(sorted.len().saturating_sub(1)))
+    let p99 = sorted
+        .get(p99_idx.min(sorted.len().saturating_sub(1)))
         .copied()
         .unwrap_or(Duration::ZERO);
 
@@ -74,10 +75,7 @@ fn print_phase(server: &str, phase: &str, r: &mut PhaseResult) {
     let stats = compute_stats(r);
     println!("=== [{}] {} ({} ops) ===", server, phase, r.count);
     println!("  Total:      {}", format_duration(r.elapsed));
-    println!(
-        "  Throughput: {:.0} ops/sec",
-        stats.throughput
-    );
+    println!("  Throughput: {:.0} ops/sec", stats.throughput);
     println!(
         "  Latency     min={}  mean={}  p99={}  max={}",
         format_duration(stats.min),
@@ -128,10 +126,7 @@ fn rustikv_read(stream: &mut TcpStream, key: &str) -> io::Result<bool> {
 // ============================================================================
 
 fn redis_write(con: &mut redis::Connection, key: &str, value: &str) -> io::Result<()> {
-    redis::cmd("SET")
-        .arg(key)
-        .arg(value)
-        .execute(con);
+    redis::cmd("SET").arg(key).arg(value).exec(con).unwrap();
     Ok(())
 }
 
@@ -139,7 +134,7 @@ fn redis_read(con: &mut redis::Connection, key: &str) -> io::Result<bool> {
     let result: Option<String> = redis::cmd("GET")
         .arg(key)
         .query(con)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        .map_err(|e| io::Error::other(e.to_string()))?;
     Ok(result.is_some())
 }
 
@@ -152,9 +147,7 @@ fn benchmark_rustikv(host: &str, count: usize, value_size: usize) -> io::Result<
     let value = "x".repeat(value_size);
 
     // Generate keys
-    let keys: Vec<String> = (0..count)
-        .map(|i| format!("bench:key:{:08}", i))
-        .collect();
+    let keys: Vec<String> = (0..count).map(|i| format!("bench:key:{:08}", i)).collect();
 
     // WRITE phase
     let write_start = Instant::now();
@@ -197,17 +190,15 @@ fn benchmark_rustikv(host: &str, count: usize, value_size: usize) -> io::Result<
 
 fn benchmark_redis(host: &str, count: usize, value_size: usize) -> io::Result<()> {
     let client = redis::Client::open(format!("redis://{}", host))
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        .map_err(|e| io::Error::other(e.to_string()))?;
     let mut con = client
         .get_connection()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        .map_err(|e| io::Error::other(e.to_string()))?;
 
     let value = "x".repeat(value_size);
 
     // Generate keys
-    let keys: Vec<String> = (0..count)
-        .map(|i| format!("bench:key:{:08}", i))
-        .collect();
+    let keys: Vec<String> = (0..count).map(|i| format!("bench:key:{:08}", i)).collect();
 
     // WRITE phase
     let write_start = Instant::now();
@@ -292,7 +283,7 @@ fn main() -> io::Result<()> {
     println!("# value-size: {}", value_size);
     println!();
 
-    let mut results: Vec<(&str, f64, f64)> = Vec::new();
+    let _results: Vec<(&str, f64, f64)> = Vec::new();
 
     for engine_name in engines_to_run {
         match engine_name {

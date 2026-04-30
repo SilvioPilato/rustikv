@@ -1,5 +1,9 @@
 # In Progress
 
+## #31 — Connection timeouts and limits
+
+Currently there is no read timeout and unbounded thread spawning per TCP connection. Add `SO_TIMEOUT` on sockets, a maximum connection limit, and graceful backpressure when the limit is reached. Addresses real operational concerns without changing the threading model.
+
 # Open Tasks
 
 ## #68 — Client-side request pipelining + bench coverage

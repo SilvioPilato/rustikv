@@ -43,6 +43,8 @@ pub struct Settings {
     pub leveled_l1_max_bytes: u64,
     pub block_size_kb: u64,
     pub block_compression: BlockCompression,
+    pub read_timeout_secs: u64,
+    pub max_connections: usize,
 }
 
 impl Settings {
@@ -71,6 +73,8 @@ impl Settings {
             leveled_l1_max_bytes: 10 * 1024 * 1024,
             block_size_kb: 4,
             block_compression: BlockCompression::Lz77,
+            read_timeout_secs: 30,
+            max_connections: 1000,
         };
         while let Some(arg) = args_iter.next() {
             match arg.as_str() {
@@ -156,6 +160,18 @@ impl Settings {
                             Settings::parse_block_compression(value).unwrap()
                     }
                 }
+                "-rts" | "--read-timeout-secs" => {
+                    if let Some(value) = args_iter.next() {
+                        settings.read_timeout_secs =
+                            value.parse().expect("Invalid read timeout secs provided");
+                    }
+                }
+                "-mc" | "--max-connections" => {
+                    if let Some(value) = args_iter.next() {
+                        settings.max_connections =
+                            value.parse().expect("Invalid max connections provided");
+                    }
+                }
                 _ => println!("Unknown argument: {}", arg),
             }
         }
@@ -200,6 +216,14 @@ impl Settings {
         );
         println!("  -bc, --block-compression <COMPRESSION>");
         println!("                         Block compression: 'none' or 'lz77' (default: lz77)");
+        println!("  -rts, --read-timeout-secs <SECS>");
+        println!(
+            "                         Read timeout per connection in seconds (default: 30, 0 = disabled)"
+        );
+        println!("  -mc, --max-connections <N>");
+        println!(
+            "                         Maximum concurrent connections (default: 1000, 0 = unlimited)"
+        );
         println!("  -h, --help             Print this help message");
     }
     fn parse_fsync(s: &str) -> Result<FSyncStrategy, String> {
