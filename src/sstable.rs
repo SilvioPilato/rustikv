@@ -12,7 +12,6 @@ use crate::{
     record::{Record, RecordHeader},
 };
 
-const SPARSE_INDEX_INTERVAL: usize = 1;
 const BLOOM_BITS_PER_KEY: usize = 10;
 const BLOOM_HASH_COUNT: u32 = 7;
 
@@ -117,7 +116,6 @@ impl SSTable {
         let mut bloom = BloomFilter::new(bloom_bytes.max(1), BLOOM_HASH_COUNT);
         let mut last_key: Option<String> = None;
         let mut block_writer = BlockWriter::new(target_block_size, compression_enabled);
-        let mut block_count = 0;
         let mut file_offset = 0u64;
         let mut first_key_in_block = None;
 
@@ -143,20 +141,15 @@ impl SSTable {
             bloom.insert(key);
             last_key = Some(key.clone());
             if let Some(block_bytes) = block_writer.add_record(&record)? {
-                if block_count % SPARSE_INDEX_INTERVAL == 0 {
-                    sparse_index.push((first_key_in_block.take().unwrap(), file_offset));
-                }
+                sparse_index.push((first_key_in_block.take().unwrap(), file_offset));
                 file.write_all(&block_bytes)?;
                 file_offset += block_bytes.len() as u64;
-                block_count += 1;
                 first_key_in_block = Some(key.clone());
             }
         }
 
         if let Some(block_bytes) = block_writer.flush()? {
-            if block_count % SPARSE_INDEX_INTERVAL == 0
-                && let Some(ref key) = first_key_in_block
-            {
+            if let Some(ref key) = first_key_in_block {
                 sparse_index.push((key.to_owned(), file_offset));
             }
             file.write_all(&block_bytes)?;
@@ -263,7 +256,6 @@ impl SSTable {
         let mut reader = BufReader::new(file);
         let mut sparse_index: Vec<(String, u64)> = Vec::new();
         let mut keys: Vec<String> = Vec::new();
-        let mut block_count = 0;
         loop {
             let block_offset = reader.stream_position()?;
 
@@ -292,12 +284,9 @@ impl SSTable {
                 }
             }
 
-            if block_count % SPARSE_INDEX_INTERVAL == 0
-                && let Some(k) = first_key
-            {
+            if let Some(k) = first_key {
                 sparse_index.push((k, block_offset));
             }
-            block_count += 1;
         }
         let bloom_bytes = (keys.len() * BLOOM_BITS_PER_KEY).div_ceil(8);
         let mut bloom = BloomFilter::new(bloom_bytes.max(1), BLOOM_HASH_COUNT);

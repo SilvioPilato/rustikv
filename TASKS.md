@@ -100,6 +100,12 @@ Comprehensive evaluation of optimization strategies for block-based compression 
 
 # Closed Tasks
 
+## #31 — Connection timeouts and limits
+
+Currently there is no read timeout and unbounded thread spawning per TCP connection. Add `SO_TIMEOUT` on sockets, a maximum connection limit, and graceful backpressure when the limit is reached. Addresses real operational concerns without changing the threading model.
+
+PR: <https://github.com/SilvioPilato/rustikv/pull/40>
+
 ## #67 — LZ77 encoder performance: flat hash table + rolling hash
 
 Replace the `HashMap<[u8;3], usize>` head-of-chain table in the LZ77 encoder with a flat `Vec<u32>` and a zlib-style rolling hash. The rolling hash feeds one byte at a time (`((prev << H_SHIFT) ^ byte) & mask`) so the literal branch advances in a single XOR+shift op. The match branch rolls through intermediate positions to keep state current. Eliminates per-lookup heap allocation and SipHash overhead, reducing encode cost at large payload sizes. Depends on #66.
