@@ -123,7 +123,12 @@ Token allocation: `next_token` starts at 1 (mio-runtime reserves `usize::MAX` fo
   while let Ok(mut stream) = self.incoming.try_recv() {
       let token = Token(self.next_token);
       self.next_token += 1;
-      registry.register(&mut stream, token, ReadyState { readable: true, writable: false })?;
+      // EventHandler::on_wake returns (), so register errors must be
+      // handled inline rather than propagated via `?`.
+      if registry.register(&mut stream, token, mio::Interest::READABLE).is_err() {
+          self.stats.active_connections.fetch_sub(1, Ordering::Relaxed);
+          continue;
+      }
       let conn = Connection::new(stream);
       self.connections.insert(token, conn);
   }
@@ -159,7 +164,7 @@ pub enum ParseState {
    - **`ReadingPayload { remaining }`**: if `read_buf.len() >= 4 + remaining`, slice the full frame, call `bffp::decode_input_frame(full_frame)?`, then `dispatch::dispatch(cmd, &engine, &stats, &cfg)` to produce a response `Vec<u8>`, append to `write_buf`, drain the consumed bytes from `read_buf` (`read_buf.drain(0..4 + remaining);`), reset `parse_state = ReadingHeader`. Loop again — there may be another full frame in the buffer (pipelining, #68).
 4. `Err(e) if e.kind() == WouldBlock` → break read loop.
 5. `Err(_)` → return `Close`.
-6. After read loop: if `write_buf.is_empty()`, return `Continue { reregister: None }`. If `write_buf` has bytes, return `Continue { reregister: Some(READABLE | WRITABLE) }` — caller reregisters the source.
+6. After read loop: if `write_buf.is_empty()`, return `Continue { reregister: None }`. If `write_buf` has bytes, return `Continue { reregister: Some(mio::Interest::READABLE | mio::Interest::WRITABLE) }` — caller reregisters the source.
 
 **Write path (`Connection::on_writable`)** — drain `write_buf` until `WouldBlock`:
 
@@ -168,19 +173,24 @@ pub enum ParseState {
 3. `Ok(n)` → `write_offset += n;` continue.
 4. `Err(WouldBlock)` → break.
 5. `Err(_)` → return `Close`.
-6. After loop: if `write_offset == write_buf.len()`, clear both (`write_buf.clear(); write_offset = 0;`) and return `Continue { reregister: Some(READABLE) }`. Otherwise return `Continue { reregister: None }` (still mid-write, keep current interest).
+6. After loop: if `write_offset == write_buf.len()`, clear both (`write_buf.clear(); write_offset = 0;`) and return `Continue { reregister: Some(mio::Interest::READABLE) }`. Otherwise return `Continue { reregister: None }` (still mid-write, keep current interest).
 
-The reregistration mechanic is bubbled to the caller because `Connection` doesn't own the `Registry` — `WorkerHandler::on_event` calls `registry.reregister(&mut conn.stream, token, ready_state)` based on the action returned.
+The reregistration mechanic is bubbled to the caller because `Connection` doesn't own the `Registry` — `WorkerHandler::on_event` calls `registry.reregister(&mut conn.stream, token, interest)` based on the action returned. (Note: `Registry::register`/`reregister` take a `mio::Interest` directly — `mio_runtime::ReadyState` is consumer-facing readiness only, used in `on_event`'s third argument.)
 
 ### 6. Read Timeouts: Periodic Sweep
 
 `mio-runtime`'s timer wheel is bounded at **512 ms** (ADR-001 §2, asserted by mio-runtime task #2). Per-connection second-scale timers would panic. Instead: one repeating periodic timer per worker, sweeps connections.
 
-**Setup (in `WorkerHandler::start`, called once before `event_loop.run`):**
+**Setup (lazy init on first `on_wake`):**
+
+`Registry` is only constructed inside `EventLoop::run` and handed to callbacks — there is no public way to obtain a `Registry` outside the running loop. The sweep timer is therefore installed on the first `on_wake` callback (which always fires when the acceptor delivers the first connection):
 
 ```rust
-if let Some(_) = self.idle_timeout {
-    self.sweep_timer = Some(registry.insert_timer(self.sweep_interval));
+fn on_wake(&mut self, registry: &Registry) {
+    if self.sweep_timer.is_none() && self.idle_timeout.is_some() {
+        self.sweep_timer = Some(registry.insert_timer(self.sweep_interval));
+    }
+    // ... drain incoming streams ...
 }
 ```
 
@@ -247,9 +257,10 @@ pub struct ServerConfig {
 }
 
 pub struct Server {
-    listener: std::net::TcpListener,
     workers: Vec<JoinHandle<io::Result<()>>>,
     acceptor: JoinHandle<io::Result<()>>,
+    worker_stops: Vec<StopHandle>,        // for graceful shutdown
+    acceptor_stop: Arc<AtomicBool>,        // acceptor checks this between accept() calls
 }
 
 impl Server {
@@ -266,8 +277,8 @@ Build sequence in `Server::start`:
 1. Bind `std::net::TcpListener`.
 2. For `i in 0..cfg.workers`:
    - Create `mpsc::channel::<mio::net::TcpStream>()`.
-   - Build `Worker { event_loop: EventLoop::new()?, handler: WorkerHandler::new(...) }`.
-   - Capture `event_loop.waker()` for the acceptor.
+   - Build `Worker { event_loop: EventLoop::new(Duration::from_millis(512))?, handler: WorkerHandler::new(...) }`. The `Duration` is the timer wheel capacity; 512 ms matches `mio-runtime`'s default sizing per ADR-001 §2 and accommodates the 100 ms sweep tick.
+   - Capture `event_loop.waker()` for the acceptor and `event_loop.stop_handle()` for graceful shutdown.
    - `thread::Builder::new().name(format!("rustikv-worker-{i}")).spawn(move || worker.run())`.
 3. Build `Acceptor { listener: cloned, senders, wakers, ... }`.
 4. Spawn acceptor thread.
