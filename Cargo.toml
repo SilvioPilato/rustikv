@@ -27,3 +27,4 @@ path = "src/bin/redis-compare.rs"
 [dependencies]
 sled = "0.34"
 redis = "0.27"
+mio-runtime = { git = "https://github.com/SilvioPilato/mio-runtime.git", version = "0.1.0" }

@@ -173,7 +173,7 @@ fn handle_stream_inner(
     compaction_max_segment: usize,
 ) -> io::Result<()> {
     const MAX_REQUEST_BYTES: usize = MAX_KEY_SIZE + MAX_VALUE_SIZE + 1024;
-    let mut buf_stream = BufReader::new(&mut *stream);
+    let mut buf_stream: BufReader<&mut TcpStream> = BufReader::new(&mut *stream);
 
     loop {
         let mut len_buf = [0u8; 4];
