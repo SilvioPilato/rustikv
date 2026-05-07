@@ -417,6 +417,7 @@ dependencies = [
 name = "rustikv"
 version = "0.1.0"
 dependencies = [
+ "mio",
  "mio-runtime",
  "redis",
  "sled",
