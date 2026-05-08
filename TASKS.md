@@ -6,6 +6,14 @@ Replace the thread-per-connection TCP server in `src/main.rs` with a single-acce
 
 # Open Tasks
 
+## #72 — Set `TCP_NODELAY` on accepted connections
+
+Disable Nagle's algorithm on every accepted TCP stream so small responses (e.g. `PING` returning 5 bytes, single-key `GET` returning ~10) ship immediately rather than being coalesced with subsequent writes. With the default Nagle behavior, a small write may sit in the kernel send buffer up to ~40 ms waiting for more data or an ACK — perceptible latency for benchmarks and interactive `rustikli` use. Apply `stream.set_nodelay(true)` in the acceptor (or worker `on_wake`) right after `set_nonblocking(true)` and before handing the stream off. Also flag it in the `redis-compare` benchmark notes — the old thread-per-connection code didn't set this either, so the multi-loop server isn't regressing on its own behaviour, but the throughput/latency numbers in `docs/BENCHMARKING-GUIDE.md` should be re-baselined after this lands. Out of scope: tuning `SO_SNDBUF`/`SO_RCVBUF` or other socket-level knobs.
+
+## #71 — Worker supervision: detect panics, remove dead workers from rotation
+
+When a worker thread panics in the multi-EventLoop server (#70), its `Receiver<TcpStream>` drops and the acceptor's matching `Sender::send` starts returning `Err` on every Nth accepted connection. Currently those connections are silently dropped and the acceptor keeps round-robining through the dead slot forever — silent degradation, no observability. Add supervision: hold each worker's `thread::JoinHandle` and check periodically (or via a dedicated watchdog thread); on detected panic, either remove the worker's `Sender`/`Waker` from the acceptor's rotation (simpler — just shrink the rotation) or respawn the worker with a fresh `EventLoop` and re-issue the new `Waker` clone to the acceptor (more robust). Surface a `worker_deaths` counter in `Stats` for observability and log on death. Depends on #70 landing.
+
 ## #68 — Client-side request pipelining + bench coverage
 
 Verify and exercise pipelining over the existing BFFP framing. Pipelining is purely a client-side optimization for now: the client writes N request frames back-to-back without reading between them, then drains N responses in arrival order. TCP and the per-connection request loop already preserve order, so no protocol or server changes are expected — but the task includes a small integration test that asserts the server doesn't deadlock when many requests are buffered before the client reads, and that responses come back in the order they were issued. Adds `--pipeline N` (default `1`) to `redis-compare` so the bench can measure rustikv with RTT removed and compare against `redis-benchmark -P` numbers on the same workload. Update `bench/docker-compose.yml` usage docs accordingly. Out of scope: any tagged/multiplexed frames or out-of-order responses (see #69).
