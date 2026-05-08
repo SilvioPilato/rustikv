@@ -1,11 +1,13 @@
 use std::{
     io::{self, ErrorKind, Read, Write},
+    sync::{Arc, atomic::Ordering},
     time::Instant,
 };
 
 use crate::{
     bffp::{Command, decode_input_frame},
     record::{MAX_KEY_SIZE, MAX_VALUE_SIZE},
+    stats::Stats,
 };
 
 const MAX_REQUEST_BYTES: usize = MAX_KEY_SIZE + MAX_VALUE_SIZE + 1024;
@@ -28,6 +30,8 @@ pub struct Connection {
     pub write_buf: Vec<u8>,     // pending bytes to send
     pub write_offset: usize,    // how much of write_buf is already sent
     pub last_activity: Instant, // for idle timeout sweep
+    pub pending_close: bool, // set when readable signals Close; defer deregister until write_buf drains
+    stats: Arc<Stats>,       // ties active_connections to Connection's lifetime via Drop
 }
 
 pub struct FrameParser {
@@ -85,13 +89,16 @@ impl Default for FrameParser {
 }
 
 impl Connection {
-    pub fn new(stream: mio::net::TcpStream) -> Self {
+    pub fn new(stream: mio::net::TcpStream, stats: Arc<Stats>) -> Self {
+        stats.active_connections.fetch_add(1, Ordering::Relaxed);
         Self {
             stream,
             parser: FrameParser::new(),
             write_buf: Vec::new(),
             write_offset: 0,
             last_activity: Instant::now(),
+            pending_close: false,
+            stats,
         }
     }
 
@@ -154,5 +161,13 @@ impl Connection {
 
     pub fn has_pending_writes(&self) -> bool {
         self.write_offset < self.write_buf.len()
+    }
+}
+
+impl Drop for Connection {
+    fn drop(&mut self) {
+        self.stats
+            .active_connections
+            .fetch_sub(1, Ordering::Relaxed);
     }
 }
