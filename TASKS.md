@@ -112,7 +112,7 @@ Comprehensive evaluation of optimization strategies for block-based compression 
 
 Replace the thread-per-connection TCP server in `src/main.rs` with a single-acceptor + N-worker-EventLoop architecture built on the local `mio-runtime` crate. One blocking acceptor thread owns the `TcpListener`, round-robins each accepted stream to a worker via `mpsc::Sender<TcpStream>` + `mio_runtime::Waker::wake()`. Each worker owns its own `EventLoop`, `Registry`, and `HashMap<Token, Connection>` and runs single-threaded; once a connection lands on worker K it lives there for life. `Connection` holds an incremental BFFP frame parser. Idle timeouts are preserved via a per-worker 100 ms timer sweep against `last_activity`. `--max-connections` is enforced at accept time. CLI gains `--workers N`, defaulting to `std::thread::available_parallelism()`. New dependency: `mio-runtime` (sibling crate, git-pinned). Supersedes #32. Realises mio-runtime task #6 in a multi-loop variant. Spec: `docs/superpowers/specs/2026-05-03-multi-eventloop-tcp-server-design.md`. Plan: `docs/superpowers/plans/2026-05-03-multi-eventloop-tcp-server.md`.
 
-PR: _pending_
+PR: <https://github.com/SilvioPilato/rustikv/pull/41>
 
 ## #32 — Async I/O with tokio
 
