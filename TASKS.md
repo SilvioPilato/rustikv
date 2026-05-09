@@ -108,6 +108,12 @@ Comprehensive evaluation of optimization strategies for block-based compression 
 
 # Closed Tasks
 
+## #72 — Set `TCP_NODELAY` on accepted connections
+
+Disable Nagle's algorithm on every accepted TCP stream so small responses (e.g. `PING` returning 5 bytes, single-key `GET` returning ~10) ship immediately rather than being coalesced with subsequent writes. With the default Nagle behavior, a small write may sit in the kernel send buffer up to ~40 ms waiting for more data or an ACK — perceptible latency for benchmarks and interactive `rustikli` use. Apply `stream.set_nodelay(true)` in the acceptor (or worker `on_wake`) right after `set_nonblocking(true)` and before handing the stream off. Also flag it in the `redis-compare` benchmark notes — the old thread-per-connection code didn't set this either, so the multi-loop server isn't regressing on its own behaviour, but the throughput/latency numbers in `docs/BENCHMARKING-GUIDE.md` should be re-baselined after this lands. Out of scope: tuning `SO_SNDBUF`/`SO_RCVBUF` or other socket-level knobs.
+
+PR: <https://github.com/SilvioPilato/rustikv/pull/42>
+
 ## #70 — Multi-EventLoop TCP server: acceptor + worker pool on `mio-runtime`
 
 Replace the thread-per-connection TCP server in `src/main.rs` with a single-acceptor + N-worker-EventLoop architecture built on the local `mio-runtime` crate. One blocking acceptor thread owns the `TcpListener`, round-robins each accepted stream to a worker via `mpsc::Sender<TcpStream>` + `mio_runtime::Waker::wake()`. Each worker owns its own `EventLoop`, `Registry`, and `HashMap<Token, Connection>` and runs single-threaded; once a connection lands on worker K it lives there for life. `Connection` holds an incremental BFFP frame parser. Idle timeouts are preserved via a per-worker 100 ms timer sweep against `last_activity`. `--max-connections` is enforced at accept time. CLI gains `--workers N`, defaulting to `std::thread::available_parallelism()`. New dependency: `mio-runtime` (sibling crate, git-pinned). Supersedes #32. Realises mio-runtime task #6 in a multi-loop variant. Spec: `docs/superpowers/specs/2026-05-03-multi-eventloop-tcp-server-design.md`. Plan: `docs/superpowers/plans/2026-05-03-multi-eventloop-tcp-server.md`.

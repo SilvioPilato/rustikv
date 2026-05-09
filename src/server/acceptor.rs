@@ -50,6 +50,10 @@ impl Acceptor {
                         eprintln!("acceptor: set_nonblocking failed: {}", e);
                         continue;
                     }
+                    if let Err(e) = stream.set_nodelay(true) {
+                        eprintln!("acceptor: set_nodelay failed: {}", e);
+                        continue;
+                    }
                     let i = self.next_worker;
                     self.next_worker = (self.next_worker + 1) % self.num_workers;
                     let mio_stream = mio::net::TcpStream::from_std(stream);
