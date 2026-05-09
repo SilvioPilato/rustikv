@@ -45,6 +45,7 @@ pub struct Settings {
     pub block_compression: BlockCompression,
     pub read_timeout_secs: u64,
     pub max_connections: usize,
+    pub workers: Option<usize>,
 }
 
 impl Settings {
@@ -75,6 +76,7 @@ impl Settings {
             block_compression: BlockCompression::Lz77,
             read_timeout_secs: 30,
             max_connections: 1000,
+            workers: None,
         };
         while let Some(arg) = args_iter.next() {
             match arg.as_str() {
@@ -172,6 +174,17 @@ impl Settings {
                             value.parse().expect("Invalid max connections provided");
                     }
                 }
+                "-w" | "--workers" => {
+                    if let Some(value) = args_iter.next() {
+                        let workers: usize =
+                            value.parse().expect("Invalid workers number provided");
+                        if workers == 0 {
+                            settings.workers = None;
+                        } else {
+                            settings.workers = Some(workers);
+                        }
+                    }
+                }
                 _ => println!("Unknown argument: {}", arg),
             }
         }
@@ -223,6 +236,10 @@ impl Settings {
         println!("  -mc, --max-connections <N>");
         println!(
             "                         Maximum concurrent connections (default: 1000, 0 = unlimited)"
+        );
+        println!("  -w, --workers <N>");
+        println!(
+            "                         Numbers of workers deployed (default: None, 0 = available parallelism)"
         );
         println!("  -h, --help             Print this help message");
     }
