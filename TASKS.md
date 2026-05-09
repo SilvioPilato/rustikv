@@ -1,9 +1,5 @@
 # In Progress
 
-## #70 — Multi-EventLoop TCP server: acceptor + worker pool on `mio-runtime`
-
-Replace the thread-per-connection TCP server in `src/main.rs` with a single-acceptor + N-worker-EventLoop architecture built on the local `mio-runtime` crate (sibling repo at `../mio-runtime`, consumed via git rev pin). One blocking acceptor thread owns the `TcpListener`, round-robins each accepted stream to a worker via `mpsc::Sender<TcpStream>` + `mio_runtime::Waker::wake()`. Each worker owns its own `EventLoop`, `Registry`, and `HashMap<Token, Connection>` and runs single-threaded; once a connection lands on worker K it lives there for life (no migration). `Connection` holds `read_buf`, `write_buf`, `write_offset`, and a `ParseState` enum (`ReadingHeader` / `ReadingPayload { remaining }`) for incremental BFFP framing. Read path drains the socket until `WouldBlock`, advances state, dispatches each fully-framed `Command` through a pure `dispatch(cmd, engine, stats, cfg) -> Vec<u8>` (lifted verbatim from today's match-on-`Command` in `src/main.rs`), appends the response to `write_buf`, opportunistically attempts a write, and reregisters for `READABLE | WRITABLE` if bytes remain. Write path drains and reverts to `READABLE`-only when fully flushed. Read timeouts (#31's `--read-timeout-secs`) are preserved via a per-worker 100ms periodic timer that sweeps `last_read_at` against `idle_timeout` — second-scale per-connection timers can't use mio-runtime's 512ms-bounded wheel directly. `--max-connections` is enforced at accept time; rejected peers get the existing error frame and never reach a worker. CLI gains `--workers N`, defaulting to `std::thread::available_parallelism()`. New dependency: `mio-runtime = { git = "https://github.com/SilvioPilato/mio-runtime.git", rev = "<sha>" }` (pure git, rev-pinned for reproducibility). Supersedes #32 (tokio-based async I/O) — close #32 with a "Superseded by #70" note when this PR lands. Realises mio-runtime task #6 in a multi-loop variant (mio-runtime needs no code changes — `EventLoop`/`Registry` are already `!Send`/`!Clone` per-instance, not anti-multi-loop); mio-runtime #6 will be moved to that repo's Closed Tasks with a "Realised by rustikv #70" note in the same PR cycle. Out of scope: tagged/multiplexed BFFP frames (#69), client pipelining bench (#68), connection migration between workers, slow-call offload to a thread pool. Design spec: `docs/superpowers/specs/2026-05-03-multi-eventloop-tcp-server-design.md`.
-
 # Open Tasks
 
 ## #73 — Replace `server.addr` file with stdout-based port discovery
@@ -41,10 +37,6 @@ Memory-map SSTable files so lookups become pointer arithmetic instead of `read()
 ## #31 — Connection timeouts and limits
 
 Currently there is no read timeout and unbounded thread spawning per TCP connection. Add `SO_TIMEOUT` on sockets, a maximum connection limit, and graceful backpressure when the limit is reached. Addresses real operational concerns without changing the threading model.
-
-## #32 — Async I/O with tokio
-
-Replace the thread-per-connection TCP model with async handling using tokio. Enables higher concurrency with lower resource usage. A major Rust learning exercise and a stepping stone toward replication and distributed features.
 
 ## #33 — Single-leader replication (DDIA Ch. 5)
 
@@ -115,6 +107,18 @@ Extend the block-based SSTable format (from #29) with per-block integrity checks
 Comprehensive evaluation of optimization strategies for block-based compression (from #29). Implement and benchmark: (1) block-level decompression caching (LRU in-memory cache), (2) lazy decompression (only decompress blocks on key access), (3) parallel decompression for range scans (decompress multiple blocks concurrently), (4) SIMD optimization for LZ77 match-finding and copying, (5) prefetching for sequential reads. Measure latency, throughput, and memory overhead against baseline. Generate comparison report. Depends on #29. Low priority—exploratory task to understand real-world performance gains and tradeoffs.
 
 # Closed Tasks
+
+## #70 — Multi-EventLoop TCP server: acceptor + worker pool on `mio-runtime`
+
+Replace the thread-per-connection TCP server in `src/main.rs` with a single-acceptor + N-worker-EventLoop architecture built on the local `mio-runtime` crate. One blocking acceptor thread owns the `TcpListener`, round-robins each accepted stream to a worker via `mpsc::Sender<TcpStream>` + `mio_runtime::Waker::wake()`. Each worker owns its own `EventLoop`, `Registry`, and `HashMap<Token, Connection>` and runs single-threaded; once a connection lands on worker K it lives there for life. `Connection` holds an incremental BFFP frame parser. Idle timeouts are preserved via a per-worker 100 ms timer sweep against `last_activity`. `--max-connections` is enforced at accept time. CLI gains `--workers N`, defaulting to `std::thread::available_parallelism()`. New dependency: `mio-runtime` (sibling crate, git-pinned). Supersedes #32. Realises mio-runtime task #6 in a multi-loop variant. Spec: `docs/superpowers/specs/2026-05-03-multi-eventloop-tcp-server-design.md`. Plan: `docs/superpowers/plans/2026-05-03-multi-eventloop-tcp-server.md`.
+
+PR: _pending_
+
+## #32 — Async I/O with tokio
+
+Replace the thread-per-connection TCP model with async handling using tokio. Enables higher concurrency with lower resource usage. A major Rust learning exercise and a stepping stone toward replication and distributed features.
+
+Superseded by #70 (multi-EventLoop TCP server on `mio-runtime`).
 
 ## #31 — Connection timeouts and limits
 
