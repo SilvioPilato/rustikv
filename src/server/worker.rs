@@ -26,11 +26,12 @@ impl Worker {
         engine: Arc<dyn StorageEngine>,
         stats: Arc<Stats>,
         cfg: CompactionCfg,
+        read_timeout_secs: Option<Duration>,
     ) -> io::Result<Self> {
         let event_loop = EventLoop::new(Duration::from_millis(512))?;
         let waker = event_loop.waker();
         let stop = event_loop.stop_handle();
-        let handler = WorkerHandler::new(engine, stats, cfg, incoming);
+        let handler = WorkerHandler::new(engine, stats, cfg, incoming, read_timeout_secs);
         Ok(Self {
             event_loop,
             handler,

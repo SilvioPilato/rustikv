@@ -77,6 +77,7 @@ impl Server {
                 self.database.clone(),
                 self.stats.clone(),
                 compaction_cfg,
+                self.settings.read_timeout_secs,
             )?;
             senders.push(sender);
             wakers.push(worker.waker.clone());

@@ -3,6 +3,7 @@ use mio_runtime::{EventHandler, ReadyState, Registry, TimerId, Token};
 use std::{
     collections::HashMap,
     sync::{Arc, mpsc::Receiver},
+    time::Duration,
 };
 
 use crate::{
@@ -10,7 +11,7 @@ use crate::{
     server::{CompactionCfg, Connection, ConnectionAction, dispatch},
     stats::Stats,
 };
-
+const SWEEP_INTERVAL: Duration = Duration::from_millis(100);
 pub struct WorkerHandler {
     incoming: Receiver<TcpStream>,
     conns: HashMap<Token, Connection>,
@@ -18,6 +19,8 @@ pub struct WorkerHandler {
     stats: Arc<Stats>,
     cfg: CompactionCfg,
     next_token: usize,
+    read_timeout_secs: Option<Duration>,
+    sweep_timer: Option<TimerId>,
 }
 
 impl WorkerHandler {
@@ -26,6 +29,7 @@ impl WorkerHandler {
         stats: Arc<Stats>,
         cfg: CompactionCfg,
         incoming: Receiver<TcpStream>,
+        read_timeout_secs: Option<Duration>,
     ) -> Self {
         Self {
             engine,
@@ -34,6 +38,8 @@ impl WorkerHandler {
             incoming,
             conns: HashMap::new(),
             next_token: 0,
+            read_timeout_secs,
+            sweep_timer: None,
         }
     }
 }
@@ -107,9 +113,33 @@ impl EventHandler for WorkerHandler {
         self.conns.insert(token, conn);
     }
 
-    fn on_timer(&mut self, _registry: &Registry, _timer_id: TimerId) {}
+    fn on_timer(&mut self, registry: &Registry, timer_id: TimerId) {
+        if Some(timer_id) != self.sweep_timer {
+            return;
+        }
+
+        if let Some(timeout) = self.read_timeout_secs {
+            let stale: Vec<Token> = self
+                .conns
+                .iter()
+                .filter(|(_, c)| c.last_activity.elapsed() > timeout)
+                .map(|(t, _)| *t)
+                .collect();
+            for token in stale {
+                if let Some(mut conn) = self.conns.remove(&token) {
+                    let _ = registry.deregister(&mut conn.stream);
+                }
+            }
+        }
+        self.sweep_timer = self
+            .read_timeout_secs
+            .map(|_| registry.insert_timer(SWEEP_INTERVAL));
+    }
 
     fn on_wake(&mut self, registry: &Registry) {
+        if self.sweep_timer.is_none() && self.read_timeout_secs.is_some() {
+            self.sweep_timer = Some(registry.insert_timer(SWEEP_INTERVAL));
+        }
         while let Ok(mut stream) = self.incoming.try_recv() {
             let token = Token(self.next_token);
             self.next_token += 1;
