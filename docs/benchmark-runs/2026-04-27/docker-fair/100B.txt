@@ -1,0 +1,33 @@
+ Container bench-rustikv-1 Running 
+ Container bench-redis-1 Running 
+ Container bench-redis-1 Waiting 
+ Container bench-redis-1 Healthy 
+ Container bench-bench-run-20008d1d2b31 Creating 
+ Container bench-bench-run-20008d1d2b31 Created 
+Waiting for rustikv...
+Waiting for redis...
+Both servers ready.
+# redis-compare: TCP server benchmark
+# count: 10000
+# value-size: 100
+
+=== [rustikv] WRITE (10000 ops) ===
+  Total:      356.666ms
+  Throughput: 28037 ops/sec
+  Latency     min=19.906µs  mean=35.608µs  p99=98.536µs  max=327.983µs
+
+=== [rustikv] READ (10000 ops) ===
+  Total:      326.632ms
+  Throughput: 30615 ops/sec
+  Latency     min=19.393µs  mean=32.602µs  p99=82.094µs  max=265.262µs
+
+=== [redis] WRITE (10000 ops) ===
+  Total:      400.946ms
+  Throughput: 24941 ops/sec
+  Latency     min=24.765µs  mean=40.051µs  p99=112.475µs  max=678.604µs
+
+=== [redis] READ (10000 ops) ===
+  Total:      378.833ms
+  Throughput: 26397 ops/sec
+  Latency     min=22.201µs  mean=37.845µs  p99=103.657µs  max=521.210µs
+

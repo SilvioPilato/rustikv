@@ -1,0 +1,17 @@
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 10000  Value size: 100B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (10000 ops) ===
+  Total:      281.676ms
+  Throughput: 35502 ops/sec
+  Latency     min=22.200µs  mean=28.125µs  p99=81.100µs  max=311.400µs
+
+=== READ (uniform) (10000 ops) ===
+  Total:      237.609ms
+  Throughput: 42086 ops/sec
+  Latency     min=16.700µs  mean=23.718µs  p99=79.600µs  max=255.900µs
+
+=== RANGE (window=100) (100 ops) ===
+  Total:      6.184ms
+  Throughput: 16172 ops/sec
+  Latency     min=46.400µs  mean=61.792µs  p99=176.400µs  max=176.400µs

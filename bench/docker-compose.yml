@@ -1,0 +1,82 @@
+# Apples-to-apples benchmark of rustikv vs Redis.
+#
+# Both servers run in containers on the same bridge network. The bench client
+# also runs as a container on that network, so the network path (one Docker
+# bridge hop) is identical for both targets.
+#
+# Durability: both servers are configured to write to a log but NOT fsync per
+# op (Redis: AOF with appendfsync=no; rustikv: --fsync-interval never).
+#
+# Usage:
+#   docker compose -f bench/docker-compose.yml up -d --build redis rustikv
+#   docker compose -f bench/docker-compose.yml run --rm bench
+#   docker compose -f bench/docker-compose.yml down -v
+
+services:
+  redis:
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - "no"
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 1s
+      retries: 10
+
+  rustikv:
+    build:
+      context: ..
+      dockerfile: bench/Dockerfile
+      target: rustikv-runtime
+    command:
+      - /data
+      - --engine
+      - lsm
+      - --fsync-interval
+      - never
+      - --tcp
+      - 0.0.0.0:6666
+    networks:
+      - bench-net
+
+  bench:
+    build:
+      context: ..
+      dockerfile: bench/Dockerfile
+      target: bench-runtime
+    depends_on:
+      redis:
+        condition: service_healthy
+      rustikv:
+        condition: service_started
+    networks:
+      - bench-net
+    entrypoint: []
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        echo "Waiting for rustikv..."
+        until nc -z rustikv 6666; do sleep 0.2; done
+        echo "Waiting for redis..."
+        until nc -z redis 6379; do sleep 0.2; done
+        echo "Both servers ready."
+        exec /usr/local/bin/redis-compare \
+          --rustikv-host rustikv:6666 \
+          --redis-host redis:6379 \
+          --count ${COUNT:-10000} \
+          --value-size ${VALUE_SIZE:-100} \
+          --engines ${ENGINES:-rustikv,redis}
+
+networks:
+  bench-net:
+    driver: bridge

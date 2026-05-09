@@ -1,0 +1,27 @@
+# conc-4w8r-lsm-never
+# server: rustikv --engine lsm --fsync-interval never --block-compression none
+# bench:  kvbench -n 10000 -s 100 --mode concurrent --writers 4 --readers 8
+# date:   2026-04-25T14:47:51Z
+# git:    f9a315a
+
+Connected to 127.0.0.1:6666
+Mode: concurrent  Keys: 10000  Value size: 100B  Writers: 4  Readers: 8  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (10000 ops) ===
+  Total:      119.913ms
+  Throughput: 83394 ops/sec
+  Latency     min=22.900µs  mean=47.438µs  p99=149.700µs  max=600.700µs
+
+=== READ (10000 ops) ===
+  Total:      71.065ms
+  Throughput: 140715 ops/sec
+  Latency     min=19.500µs  mean=50.490µs  p99=159.100µs  max=854.600µs
+
+=== RANGE (window=100) (100 ops) ===
+  Total:      5.779ms
+  Throughput: 17304 ops/sec
+  Latency     min=48.000µs  mean=57.751µs  p99=192.000µs  max=192.000µs
+
+=== AGGREGATE (20000 ops) ===
+  Wall time:  119.913ms
+  Throughput: 166787 ops/sec

@@ -1,0 +1,23 @@
+# pay-1KB-lsm-never-bcnone
+# server: rustikv --engine lsm --fsync-interval never --block-compression none
+# bench:  kvbench -n 10000 -s 1000
+# date:   2026-04-25T14:51:00Z
+# git:    f9a315a
+
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 10000  Value size: 1000B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (10000 ops) ===
+  Total:      330.716ms
+  Throughput: 30237 ops/sec
+  Latency     min=21.900µs  mean=33.025µs  p99=123.500µs  max=847.900µs
+
+=== READ (uniform) (10000 ops) ===
+  Total:      223.983ms
+  Throughput: 44646 ops/sec
+  Latency     min=17.400µs  mean=22.357µs  p99=49.800µs  max=241.300µs
+
+=== RANGE (window=100) (100 ops) ===
+  Total:      14.641ms
+  Throughput: 6830 ops/sec
+  Latency     min=125.100µs  mean=146.363µs  p99=327.400µs  max=327.400µs

@@ -11,10 +11,44 @@
       "Bash(cargo check:*)",
       "Bash(./target/debug/kvbench.exe --help)",
       "Bash(cargo run:*)",
-      "Read(//c/Users/Silvio/AppData/Local/Temp/claude/c--Users-Silvio-Dev-kv-store/79ff6272-9932-4628-bcd3-b2ab8e5b47dd/tasks/**)"
+      "Read(//c/Users/Silvio/AppData/Local/Temp/claude/c--Users-Silvio-Dev-kv-store/79ff6272-9932-4628-bcd3-b2ab8e5b47dd/tasks/**)",
+      "Bash(python3 scripts/analyze-redis-compare.py)",
+      "Bash(tee docs/benchmark-runs/2026-04-25/redis-compare-100B.txt)",
+      "Bash(bash scripts/run-lz77-sparse1-bench.sh)",
+      "Bash(tasklist /FI \"IMAGENAME eq rustikv.exe\")",
+      "Bash(netstat -ano)",
+      "Bash(tasklist /FI \"PID eq 13372\")",
+      "PowerShell(Get-NetTCPConnection -LocalPort 6666 -ErrorAction SilentlyContinue | Select-Object LocalAddress, LocalPort, State, OwningProcess | ForEach-Object { $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; [PSCustomObject]@{Port=$_.LocalPort; State=$_.State; PID=$_.OwningProcess; Name=$p.ProcessName; Path=$p.Path} })",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"ProcessId=13372\")",
+      "PowerShell(Get-WmiObject Win32_Process -Filter \"ProcessId=13372\")",
+      "Read(//proc/13372/**)",
+      "Bash(wmic process *)",
+      "Read(//c/tmp/**)",
+      "Read(//tmp/**)",
+      "Bash(taskkill /PID 13372 /F)",
+      "PowerShell(Stop-Process -Id 13372 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 6666 -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)",
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(rustc --version)",
+      "Bash(tee /tmp/bench-out-100B.txt)",
+      "Bash(VALUE_SIZE=1024 docker compose -f bench/docker-compose.yml run --rm -e VALUE_SIZE=1024 bench)",
+      "Bash(tee /tmp/bench-out-1KB.txt)",
+      "Bash(tee /tmp/bench-out-10KB.txt)",
+      "Bash(VALUE_SIZE=10240 docker compose -f bench/docker-compose.yml run --rm bench)",
+      "Bash(VALUE_SIZE=102400 docker compose -f bench/docker-compose.yml run --rm bench)",
+      "Bash(tee /tmp/bench-out-100KB.txt)",
+      "Bash(cp /tmp/bench-out-100B.txt c:/Users/Silvio/Dev/kv-store/docs/benchmark-runs/2026-04-27/docker-fair/100B.txt)",
+      "Bash(cp /tmp/bench-out-1KB.txt c:/Users/Silvio/Dev/kv-store/docs/benchmark-runs/2026-04-27/docker-fair/1KB.txt)",
+      "Bash(cp /tmp/bench-out-10KB.txt c:/Users/Silvio/Dev/kv-store/docs/benchmark-runs/2026-04-27/docker-fair/10KB.txt)",
+      "Bash(cp /tmp/bench-out-100KB.txt c:/Users/Silvio/Dev/kv-store/docs/benchmark-runs/2026-04-27/docker-fair/100KB.txt)"
     ],
     "additionalDirectories": [
-      "C:\\Temp"
+      "C:\\Temp",
+      "C:\\Users\\Silvio",
+      "C:\\Users\\Silvio\\Dev\\kv-store\\docs\\benchmark-runs\\2026-04-25",
+      "\\tmp"
     ]
   }
 }

@@ -40,14 +40,20 @@ def parse_duration_to_ms(duration_str: str) -> float:
 def parse_latency_duration(duration_str: str) -> float:
     """Convert latency duration to microseconds (µs)."""
     duration_str = duration_str.strip()
-    if duration_str.endswith('ns'):
-        return float(duration_str[:-2]) / 1000
-    elif duration_str.endswith('µs'):
-        return float(duration_str[:-2])
-    elif duration_str.endswith('ms'):
-        return float(duration_str[:-2]) * 1000
-    else:
-        return float(duration_str)
+    # Remove microsecond symbol variations
+    if 'ns' in duration_str:
+        val = float(duration_str.split('ns')[0].strip())
+        return val / 1000
+    elif 'ms' in duration_str:
+        val = float(duration_str.split('ms')[0].strip())
+        return val * 1000
+    else:  # Assume microseconds
+        # Try to extract numeric value
+        import re
+        match = re.search(r'[\d.]+', duration_str)
+        if match:
+            return float(match.group())
+    return float(duration_str)
 
 def parse_benchmark_file(filepath: Path) -> Dict[str, PhaseStats]:
     """Parse a redis-compare output file and extract stats."""
@@ -118,7 +124,7 @@ def main():
         try:
             stats = parse_benchmark_file(filepath)
             all_results[payload_size] = stats
-            print(f"✓ ({len(stats)} phases)")
+            print(f"OK ({len(stats)} phases)")
         except Exception as e:
             print(f"✗ Error: {e}")
 
@@ -231,7 +237,7 @@ def main():
     with open(output_file, 'w') as f:
         f.write('\n'.join(output_lines))
 
-    print(f"✓ Analysis saved to {output_file}")
+    print(f"OK: Analysis saved to {output_file}")
     print()
     print('\n'.join(output_lines))
 

@@ -1,0 +1,266 @@
+# sparse-index-1-bclz77
+# server: rustikv --engine lsm --fsync-interval never -bc lz77 (SPARSE_INDEX_INTERVAL=1)
+# bench:  kvbench sequential, fresh DB per run
+# date:   2026-04-25T14:22:37Z
+# git:    f9a315a
+
+===== 100B (10000 keys, 100B values) =====
+--- run 1 ---
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 10000  Value size: 100B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (10000 ops) ===
+  Total:      274.996ms
+  Throughput: 36364 ops/sec
+  Latency     min=20.300µs  mean=27.449µs  p99=75.800µs  max=564.600µs
+
+=== READ (uniform) (10000 ops) ===
+  Total:      225.968ms
+  Throughput: 44254 ops/sec
+  Latency     min=15.900µs  mean=22.553µs  p99=78.400µs  max=529.200µs
+
+=== RANGE (window=100) (100 ops) ===
+  Total:      5.324ms
+  Throughput: 18783 ops/sec
+  Latency     min=46.200µs  mean=53.195µs  p99=126.900µs  max=126.900µs
+=== DB size (bytes) ===
+--- run 2 ---
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 10000  Value size: 100B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (10000 ops) ===
+  Total:      378.050ms
+  Throughput: 26452 ops/sec
+  Latency     min=21.200µs  mean=37.767µs  p99=149.700µs  max=2.795ms
+
+=== READ (uniform) (10000 ops) ===
+  Total:      342.805ms
+  Throughput: 29171 ops/sec
+  Latency     min=13.100µs  mean=34.239µs  p99=141.300µs  max=6.071ms
+
+=== RANGE (window=100) (100 ops) ===
+  Total:      5.317ms
+  Throughput: 18808 ops/sec
+  Latency     min=46.200µs  mean=53.136µs  p99=181.500µs  max=181.500µs
+=== DB size (bytes) ===
+--- run 3 ---
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 10000  Value size: 100B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (10000 ops) ===
+  Total:      270.179ms
+  Throughput: 37012 ops/sec
+  Latency     min=21.100µs  mean=26.974µs  p99=75.300µs  max=240.300µs
+
+=== READ (uniform) (10000 ops) ===
+  Total:      221.021ms
+  Throughput: 45245 ops/sec
+  Latency     min=18.800µs  mean=22.062µs  p99=47.200µs  max=244.700µs
+
+=== RANGE (window=100) (100 ops) ===
+  Total:      5.006ms
+  Throughput: 19975 ops/sec
+  Latency     min=44.900µs  mean=50.029µs  p99=112.100µs  max=112.100µs
+=== DB size (bytes) ===
+
+===== 1KB (10000 keys, 1024B values) =====
+--- run 1 ---
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 10000  Value size: 1024B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (10000 ops) ===
+  Total:      303.462ms
+  Throughput: 32953 ops/sec
+  Latency     min=22.000µs  mean=30.303µs  p99=95.300µs  max=392.300µs
+
+=== READ (uniform) (10000 ops) ===
+  Total:      223.232ms
+  Throughput: 44796 ops/sec
+  Latency     min=16.700µs  mean=22.281µs  p99=50.800µs  max=437.600µs
+
+=== RANGE (window=100) (100 ops) ===
+  Total:      15.086ms
+  Throughput: 6629 ops/sec
+  Latency     min=129.800µs  mean=150.812µs  p99=275.800µs  max=275.800µs
+=== DB size (bytes) ===
+--- run 2 ---
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 10000  Value size: 1024B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (10000 ops) ===
+  Total:      299.218ms
+  Throughput: 33420 ops/sec
+  Latency     min=22.500µs  mean=29.880µs  p99=77.000µs  max=226.300µs
+
+=== READ (uniform) (10000 ops) ===
+  Total:      236.028ms
+  Throughput: 42368 ops/sec
+  Latency     min=16.800µs  mean=23.563µs  p99=67.000µs  max=377.300µs
+
+=== RANGE (window=100) (100 ops) ===
+  Total:      20.038ms
+  Throughput: 4991 ops/sec
+  Latency     min=124.700µs  mean=200.318µs  p99=355.200µs  max=355.200µs
+=== DB size (bytes) ===
+--- run 3 ---
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 10000  Value size: 1024B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (10000 ops) ===
+  Total:      304.921ms
+  Throughput: 32795 ops/sec
+  Latency     min=21.400µs  mean=30.449µs  p99=107.600µs  max=1.468ms
+
+=== READ (uniform) (10000 ops) ===
+  Total:      227.142ms
+  Throughput: 44025 ops/sec
+  Latency     min=16.500µs  mean=22.671µs  p99=71.000µs  max=252.600µs
+
+=== RANGE (window=100) (100 ops) ===
+  Total:      30.343ms
+  Throughput: 3296 ops/sec
+  Latency     min=114.400µs  mean=303.388µs  p99=16.365ms  max=16.365ms
+=== DB size (bytes) ===
+
+===== 10KB (2000 keys, 10240B values) =====
+--- run 1 ---
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 2000  Value size: 10240B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (2000 ops) ===
+  Total:      117.394ms
+  Throughput: 17037 ops/sec
+  Latency     min=41.500µs  mean=58.652µs  p99=162.800µs  max=298.000µs
+
+=== READ (uniform) (2000 ops) ===
+  Total:      50.562ms
+  Throughput: 39556 ops/sec
+  Latency     min=19.600µs  mean=25.240µs  p99=57.500µs  max=265.200µs
+
+=== RANGE (window=100) (20 ops) ===
+  Total:      24.012ms
+  Throughput: 833 ops/sec
+  Latency     min=930.000µs  mean=1.200ms  p99=2.306ms  max=2.306ms
+=== DB size (bytes) ===
+--- run 2 ---
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 2000  Value size: 10240B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (2000 ops) ===
+  Total:      147.780ms
+  Throughput: 13534 ops/sec
+  Latency     min=44.800µs  mean=73.825µs  p99=267.100µs  max=704.700µs
+
+=== READ (uniform) (2000 ops) ===
+  Total:      72.603ms
+  Throughput: 27547 ops/sec
+  Latency     min=22.900µs  mean=36.251µs  p99=91.000µs  max=236.300µs
+
+=== RANGE (window=100) (20 ops) ===
+  Total:      36.494ms
+  Throughput: 548 ops/sec
+  Latency     min=971.600µs  mean=1.825ms  p99=14.917ms  max=14.917ms
+=== DB size (bytes) ===
+--- run 3 ---
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 2000  Value size: 10240B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (2000 ops) ===
+  Total:      111.096ms
+  Throughput: 18002 ops/sec
+  Latency     min=41.900µs  mean=55.501µs  p99=168.900µs  max=825.400µs
+
+=== READ (uniform) (2000 ops) ===
+  Total:      50.911ms
+  Throughput: 39284 ops/sec
+  Latency     min=20.300µs  mean=25.417µs  p99=90.600µs  max=196.300µs
+
+=== RANGE (window=100) (20 ops) ===
+  Total:      33.670ms
+  Throughput: 594 ops/sec
+  Latency     min=953.600µs  mean=1.683ms  p99=12.197ms  max=12.197ms
+=== DB size (bytes) ===
+
+===== 100KB (1000 keys, 102400B values) =====
+--- run 1 ---
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 1000  Value size: 102400B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (1000 ops) ===
+  Total:      1.931s
+  Throughput: 518 ops/sec
+  Latency     min=266.600µs  mean=1.931ms  p99=579.500µs  max=1.554s
+
+=== READ (uniform) (1000 ops) ===
+  Total:      7.313s
+  Throughput: 137 ops/sec
+  Latency     min=49.700µs  mean=7.313ms  p99=18.348ms  max=20.735ms
+
+=== RANGE (window=100) (10 ops) ===
+  Total:      2.466s
+  Throughput: 4 ops/sec
+  Latency     min=164.329ms  mean=246.584ms  p99=306.814ms  max=306.814ms
+=== DB size (bytes) ===
+--- run 2 ---
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 1000  Value size: 102400B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (1000 ops) ===
+  Total:      1.978s
+  Throughput: 505 ops/sec
+  Latency     min=271.700µs  mean=1.978ms  p99=493.000µs  max=1.639s
+
+=== READ (uniform) (1000 ops) ===
+  Total:      7.327s
+  Throughput: 136 ops/sec
+  Latency     min=49.100µs  mean=7.327ms  p99=18.234ms  max=22.941ms
+
+=== RANGE (window=100) (10 ops) ===
+  Total:      4.810s
+  Throughput: 2 ops/sec
+  Latency     min=311.991ms  mean=480.990ms  p99=604.033ms  max=604.033ms
+=== DB size (bytes) ===
+--- run 3 ---
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 1000  Value size: 102400B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (1000 ops) ===
+  Total:      1.989s
+  Throughput: 503 ops/sec
+  Latency     min=275.500µs  mean=1.989ms  p99=496.600µs  max=1.641s
+
+=== READ (uniform) (1000 ops) ===
+  Total:      7.655s
+  Throughput: 131 ops/sec
+  Latency     min=54.600µs  mean=7.655ms  p99=18.343ms  max=22.089ms
+
+=== RANGE (window=100) (10 ops) ===
+  Total:      7.178s
+  Throughput: 1 ops/sec
+  Latency     min=449.510ms  mean=717.813ms  p99=892.409ms  max=892.409ms
+=== DB size (bytes) ===
+
+===== 1MB (500 keys, 1048576B values) =====
+--- run 1 ---
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 500  Value size: 1048576B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (500 ops) ===
+  Total:      16.591s
+  Throughput: 30 ops/sec
+  Latency     min=3.897ms  mean=33.182ms  p99=1.596s  max=1.638s
+
+=== READ (uniform) (500 ops) ===
+  Total:      48.590s
+  Throughput: 10 ops/sec
+  Latency     min=1.473ms  mean=97.180ms  p99=199.658ms  max=219.623ms
+
+=== RANGE (window=100) (5 ops) ===
+  Total:      6.770s
+  Throughput: 1 ops/sec
+  Latency     min=1.010s  mean=1.354s  p99=1.606s  max=1.606s
+=== DB size (bytes) ===
+--- run 2 ---
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 500  Value size: 1048576B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+

@@ -1,0 +1,49 @@
+   --> src\bin\redis-compare.rs:134:10
+    |
+134 |         .execute(con);
+    |          ^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+   --> src\bin\redis-compare.rs:295:13
+    |
+295 |     let mut results: Vec<(&str, f64, f64)> = Vec::new();
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_results`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+   --> src\bin\redis-compare.rs:295:9
+    |
+295 |     let mut results: Vec<(&str, f64, f64)> = Vec::new();
+    |         ----^^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+    Finished `release` profile [optimized] target(s) in 0.08s
+     Running `target\release\redis-compare.exe --count 10000 --value-size 100`
+# redis-compare: TCP server benchmark
+# count: 10000
+# value-size: 100
+
+=== [rustikv] WRITE (10000 ops) ===
+  Total:      354.707ms
+  Throughput: 28192 ops/sec
+  Latency     min=19.200µs  mean=35.425µs  p99=90.700µs  max=6.062ms
+
+=== [rustikv] READ (10000 ops) ===
+  Total:      281.016ms
+  Throughput: 35585 ops/sec
+  Latency     min=15.900µs  mean=28.050µs  p99=72.500µs  max=374.400µs
+
+=== [redis] WRITE (10000 ops) ===
+  Total:      6.011s
+  Throughput: 1664 ops/sec
+  Latency     min=213.800µs  mean=601.028µs  p99=4.061ms  max=12.117ms
+
+=== [redis] READ (10000 ops) ===
+  Total:      4.566s
+  Throughput: 2190 ops/sec
+  Latency     min=231.300µs  mean=456.488µs  p99=1.678ms  max=4.182ms
+

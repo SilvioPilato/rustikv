@@ -1,0 +1,27 @@
+# pay-1MB-lsm-never-bcnone (sparse-index-interval=1)
+# server: rustikv --engine lsm --fsync-interval never --block-compression none
+# bench:  kvbench -n 500 -s 1000000
+# date:   2026-04-25
+# sparse-index-interval: 1
+
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 500  Value size: 1000000B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (500 ops) ===
+  Total:      2.037s
+  Throughput: 246 ops/sec
+  Latency     min=2.643ms  mean=4.073ms  p99=21.733ms  max=27.473ms
+
+=== READ (uniform) (500 ops) ===
+  Total:      2.267s
+  Throughput: 221 ops/sec
+  Latency     min=819.800µs  mean=4.533ms  p99=24.044ms  max=31.609ms
+
+=== RANGE (window=100) (5 ops) ===
+  Total:      2.312s
+  Throughput: 2 ops/sec
+  Latency     min=392.246ms  mean=462.337ms  p99=507.023ms  max=507.023ms
+
+# engbench (in-process, 500 ops, 1MB values):
+# WRITE: 369 ops/sec  (min=2ms mean=2ms p99=4ms max=5ms)
+# READ:  194 ops/sec  (min=1ms mean=5ms p99=44ms max=60ms)

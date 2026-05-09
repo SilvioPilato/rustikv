@@ -1,0 +1,31 @@
+Connected to 127.0.0.1:6666
+Mode: sequential  Keys: 500  Value size: 1000000B  Miss ratio: 0%  Range window: 100  Delete ratio: 0%  Overwrite rounds: 0  Distribution: uniform
+
+=== WRITE (500 ops) ===
+  Total:      1.954s
+  Throughput: 256 ops/sec
+  Latency     min=2.694ms  mean=3.909ms  p99=17.271ms  max=25.142ms
+
+=== READ (uniform) (500 ops) ===
+  Total:      3.363s
+  Throughput: 149 ops/sec
+  Latency     min=797.100µs  mean=6.726ms  p99=30.672ms  max=35.490ms
+
+=== RANGE (window=100) (5 ops) ===
+  Total:      2.880s
+  Throughput: 2 ops/sec
+  Latency     min=460.555ms  mean=575.922ms  p99=662.745ms  max=662.745ms
+# engbench: in-process engine benchmark
+# count: 500
+# value-size: 1000000
+
+# engine: rustikv-lsm
+
+=== WRITE (500 ops) ===
+  Throughput: 372 ops/sec
+  Latency     min=1ms  mean=2ms  p99=5ms  max=9ms
+
+=== READ (500 ops) ===
+  Throughput: 129 ops/sec
+  Latency     min=1ms  mean=7ms  p99=44ms  max=55ms
+
