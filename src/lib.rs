@@ -13,6 +13,7 @@ pub mod lz77;
 pub mod memtable;
 pub mod record;
 pub mod segment;
+pub mod server;
 pub mod settings;
 pub mod size_tiered;
 pub mod sstable;

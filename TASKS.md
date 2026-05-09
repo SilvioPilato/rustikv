@@ -2,6 +2,18 @@
 
 # Open Tasks
 
+## #73 — Replace `server.addr` file with stdout-based port discovery
+
+The server currently writes the bound address to `<db_path>/server.addr` on startup so tests can discover the OS-assigned port when binding to `0.0.0.0:0`. This is an antipattern: it's a polling-based race (tests busy-wait for the file to appear), leaves cleanup responsibility on the caller (each test must `remove_file` it), and leaks filesystem state if a test crashes. Replace it with a single `println!` to stdout (e.g. `ADDR:127.0.0.1:PORT`) immediately after the listener binds. Update all tests that spawn the server binary to read the address from the child's stdout instead of polling the file. Remove the `fs::remove_file` cleanup calls from each test. The `server.addr` write in `main.rs` can then be deleted.
+
+## #72 — Set `TCP_NODELAY` on accepted connections
+
+Disable Nagle's algorithm on every accepted TCP stream so small responses (e.g. `PING` returning 5 bytes, single-key `GET` returning ~10) ship immediately rather than being coalesced with subsequent writes. With the default Nagle behavior, a small write may sit in the kernel send buffer up to ~40 ms waiting for more data or an ACK — perceptible latency for benchmarks and interactive `rustikli` use. Apply `stream.set_nodelay(true)` in the acceptor (or worker `on_wake`) right after `set_nonblocking(true)` and before handing the stream off. Also flag it in the `redis-compare` benchmark notes — the old thread-per-connection code didn't set this either, so the multi-loop server isn't regressing on its own behaviour, but the throughput/latency numbers in `docs/BENCHMARKING-GUIDE.md` should be re-baselined after this lands. Out of scope: tuning `SO_SNDBUF`/`SO_RCVBUF` or other socket-level knobs.
+
+## #71 — Worker supervision: detect panics, remove dead workers from rotation
+
+When a worker thread panics in the multi-EventLoop server (#70), its `Receiver<TcpStream>` drops and the acceptor's matching `Sender::send` starts returning `Err` on every Nth accepted connection. Currently those connections are silently dropped and the acceptor keeps round-robining through the dead slot forever — silent degradation, no observability. Add supervision: hold each worker's `thread::JoinHandle` and check periodically (or via a dedicated watchdog thread); on detected panic, either remove the worker's `Sender`/`Waker` from the acceptor's rotation (simpler — just shrink the rotation) or respawn the worker with a fresh `EventLoop` and re-issue the new `Waker` clone to the acceptor (more robust). Surface a `worker_deaths` counter in `Stats` for observability and log on death. Depends on #70 landing.
+
 ## #68 — Client-side request pipelining + bench coverage
 
 Verify and exercise pipelining over the existing BFFP framing. Pipelining is purely a client-side optimization for now: the client writes N request frames back-to-back without reading between them, then drains N responses in arrival order. TCP and the per-connection request loop already preserve order, so no protocol or server changes are expected — but the task includes a small integration test that asserts the server doesn't deadlock when many requests are buffered before the client reads, and that responses come back in the order they were issued. Adds `--pipeline N` (default `1`) to `redis-compare` so the bench can measure rustikv with RTT removed and compare against `redis-benchmark -P` numbers on the same workload. Update `bench/docker-compose.yml` usage docs accordingly. Out of scope: any tagged/multiplexed frames or out-of-order responses (see #69).
@@ -25,10 +37,6 @@ Memory-map SSTable files so lookups become pointer arithmetic instead of `read()
 ## #31 — Connection timeouts and limits
 
 Currently there is no read timeout and unbounded thread spawning per TCP connection. Add `SO_TIMEOUT` on sockets, a maximum connection limit, and graceful backpressure when the limit is reached. Addresses real operational concerns without changing the threading model.
-
-## #32 — Async I/O with tokio
-
-Replace the thread-per-connection TCP model with async handling using tokio. Enables higher concurrency with lower resource usage. A major Rust learning exercise and a stepping stone toward replication and distributed features.
 
 ## #33 — Single-leader replication (DDIA Ch. 5)
 
@@ -99,6 +107,18 @@ Extend the block-based SSTable format (from #29) with per-block integrity checks
 Comprehensive evaluation of optimization strategies for block-based compression (from #29). Implement and benchmark: (1) block-level decompression caching (LRU in-memory cache), (2) lazy decompression (only decompress blocks on key access), (3) parallel decompression for range scans (decompress multiple blocks concurrently), (4) SIMD optimization for LZ77 match-finding and copying, (5) prefetching for sequential reads. Measure latency, throughput, and memory overhead against baseline. Generate comparison report. Depends on #29. Low priority—exploratory task to understand real-world performance gains and tradeoffs.
 
 # Closed Tasks
+
+## #70 — Multi-EventLoop TCP server: acceptor + worker pool on `mio-runtime`
+
+Replace the thread-per-connection TCP server in `src/main.rs` with a single-acceptor + N-worker-EventLoop architecture built on the local `mio-runtime` crate. One blocking acceptor thread owns the `TcpListener`, round-robins each accepted stream to a worker via `mpsc::Sender<TcpStream>` + `mio_runtime::Waker::wake()`. Each worker owns its own `EventLoop`, `Registry`, and `HashMap<Token, Connection>` and runs single-threaded; once a connection lands on worker K it lives there for life. `Connection` holds an incremental BFFP frame parser. Idle timeouts are preserved via a per-worker 100 ms timer sweep against `last_activity`. `--max-connections` is enforced at accept time. CLI gains `--workers N`, defaulting to `std::thread::available_parallelism()`. New dependency: `mio-runtime` (sibling crate, git-pinned). Supersedes #32. Realises mio-runtime task #6 in a multi-loop variant. Spec: `docs/superpowers/specs/2026-05-03-multi-eventloop-tcp-server-design.md`. Plan: `docs/superpowers/plans/2026-05-03-multi-eventloop-tcp-server.md`.
+
+PR: <https://github.com/SilvioPilato/rustikv/pull/41>
+
+## #32 — Async I/O with tokio
+
+Replace the thread-per-connection TCP model with async handling using tokio. Enables higher concurrency with lower resource usage. A major Rust learning exercise and a stepping stone toward replication and distributed features.
+
+Superseded by #70 (multi-EventLoop TCP server on `mio-runtime`).
 
 ## #31 — Connection timeouts and limits
 

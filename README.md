@@ -12,6 +12,12 @@ This project implements a simple key-value store that communicates over TCP, bui
 On startup, if an existing database directory is provided, the server rebuilds its state from segment files so that previously stored data is available immediately.
 The purpose of the project is merely didactical, but if you want to tinker with it feel free to do it.
 
+## Server architecture
+
+The server uses a **single-acceptor + N-worker** model. One blocking thread owns the `TcpListener` and round-robins each accepted connection to a worker via an `mpsc` channel + `Waker`. Each worker owns its own `EventLoop`, `Registry`, and `HashMap<Token, Connection>` and runs single-threaded — once a connection lands on worker K it lives there for life. Each `Connection` holds a state machine that incrementally parses BFFP frames out of a non-blocking byte stream. Built on the sibling [`mio-runtime`](https://github.com/SilvioPilato/mio-runtime) crate.
+
+Worker count defaults to `std::thread::available_parallelism()` and can be overridden via `--workers N`. Idle connections are reaped via a per-worker 100 ms timer sweep against `--read-timeout-secs`.
+
 ## Building
 
 To build the project, use Cargo:
@@ -43,8 +49,9 @@ cargo run -- <db_directory> [options]
 | `-lnl`, `--leveled-num-levels` | Number of levels for leveled compaction | `4` |
 | `-ll0`, `--leveled-l0-threshold` | L0 file count before compaction (leveled only) | `4` |
 | `-ll1`, `--leveled-l1-max-bytes` | L1 max size in bytes; each subsequent level is 10× larger (leveled only) | `10485760` (10 MB) |
-| `-rts`, `--read-timeout-secs` | Read timeout per connection in seconds. `0` disables | `30` |
+| `-rts`, `--read-timeout-secs` | Idle timeout per connection in seconds. Connections inactive for this long are closed by a per-worker sweep. `0` disables | `30` |
 | `-mc`, `--max-connections` | Maximum concurrent connections. `0` = unlimited | `1000` |
+| `-w`, `--workers` | Number of worker event loops. `0` = auto-detect via `available_parallelism()` | `0` (auto) |
 
 ### Examples
 
@@ -63,8 +70,6 @@ To run all tests:
 ```sh
 cargo test
 ```
-
-The TCP server keeps its per-request debug logging off by default, so integration tests stay quiet. If you want the old connection and command logs while debugging, run the server with `RUSTIKV_VERBOSE=1`.
 
 ## Client (rustikli)
 

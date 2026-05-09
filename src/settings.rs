@@ -43,8 +43,9 @@ pub struct Settings {
     pub leveled_l1_max_bytes: u64,
     pub block_size_kb: u64,
     pub block_compression: BlockCompression,
-    pub read_timeout_secs: u64,
+    pub read_timeout_secs: Option<Duration>,
     pub max_connections: usize,
+    pub workers: Option<usize>,
 }
 
 impl Settings {
@@ -73,8 +74,9 @@ impl Settings {
             leveled_l1_max_bytes: 10 * 1024 * 1024,
             block_size_kb: 4,
             block_compression: BlockCompression::Lz77,
-            read_timeout_secs: 30,
+            read_timeout_secs: Some(Duration::from_secs(30)),
             max_connections: 1000,
+            workers: None,
         };
         while let Some(arg) = args_iter.next() {
             match arg.as_str() {
@@ -162,14 +164,32 @@ impl Settings {
                 }
                 "-rts" | "--read-timeout-secs" => {
                     if let Some(value) = args_iter.next() {
-                        settings.read_timeout_secs =
+                        let read_timeout_secs: u64 =
                             value.parse().expect("Invalid read timeout secs provided");
+
+                        if read_timeout_secs == 0 {
+                            settings.read_timeout_secs = None;
+                        } else {
+                            settings.read_timeout_secs =
+                                Some(Duration::from_secs(read_timeout_secs))
+                        }
                     }
                 }
                 "-mc" | "--max-connections" => {
                     if let Some(value) = args_iter.next() {
                         settings.max_connections =
                             value.parse().expect("Invalid max connections provided");
+                    }
+                }
+                "-w" | "--workers" => {
+                    if let Some(value) = args_iter.next() {
+                        let workers: usize =
+                            value.parse().expect("Invalid workers number provided");
+                        if workers == 0 {
+                            settings.workers = None;
+                        } else {
+                            settings.workers = Some(workers);
+                        }
                     }
                 }
                 _ => println!("Unknown argument: {}", arg),
@@ -223,6 +243,10 @@ impl Settings {
         println!("  -mc, --max-connections <N>");
         println!(
             "                         Maximum concurrent connections (default: 1000, 0 = unlimited)"
+        );
+        println!("  -w, --workers <N>");
+        println!(
+            "                         Numbers of workers deployed (default: None, 0 = available parallelism)"
         );
         println!("  -h, --help             Print this help message");
     }
