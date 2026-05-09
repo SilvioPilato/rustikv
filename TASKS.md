@@ -112,7 +112,7 @@ Comprehensive evaluation of optimization strategies for block-based compression 
 
 Disable Nagle's algorithm on every accepted TCP stream so small responses (e.g. `PING` returning 5 bytes, single-key `GET` returning ~10) ship immediately rather than being coalesced with subsequent writes. With the default Nagle behavior, a small write may sit in the kernel send buffer up to ~40 ms waiting for more data or an ACK — perceptible latency for benchmarks and interactive `rustikli` use. Apply `stream.set_nodelay(true)` in the acceptor (or worker `on_wake`) right after `set_nonblocking(true)` and before handing the stream off. Also flag it in the `redis-compare` benchmark notes — the old thread-per-connection code didn't set this either, so the multi-loop server isn't regressing on its own behaviour, but the throughput/latency numbers in `docs/BENCHMARKING-GUIDE.md` should be re-baselined after this lands. Out of scope: tuning `SO_SNDBUF`/`SO_RCVBUF` or other socket-level knobs.
 
-PR: <!-- placeholder -->
+PR: <https://github.com/SilvioPilato/rustikv/pull/42>
 
 ## #70 — Multi-EventLoop TCP server: acceptor + worker pool on `mio-runtime`
 
