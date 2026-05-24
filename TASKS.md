@@ -64,13 +64,6 @@ Extend the `STATS` command to include which engine is active, segment count, tot
 
 Add a TCP command that dumps internal storage state: segment file listing, index size, bloom filter stats (estimated false positive rate), hint file presence, sparse index entry count. Lets you observe compaction shrinking segments and see the sparse index in action.
 
-## #51 — `COUNT` command (LSM only)
-
-Add a `COUNT` TCP command that returns the number of live keys matching a query without returning the values themselves. LSM-only. Two variants disambiguated by arity: `COUNT <prefix>` (keys starting with prefix) and `COUNT <start> <end>` (keys in inclusive range). Shares the three-tier merge-scan logic with `RANGE`/`PREFIX` but accumulates into a `BTreeSet` of live keys and emits only the count. Two op codes: `CountPrefix=15`, `CountRange=16`. Depends on #48, #50.
-
-Spec: `docs/superpowers/specs/2026-05-24-count-command-design.md`
-
-Spec PR: <https://github.com/SilvioPilato/rustikv/pull/48>
 
 ## #52 — `FIRST` and `LAST` commands (LSM only)
 
@@ -101,6 +94,14 @@ Extend the block-based SSTable format (from #29) with per-block integrity checks
 Comprehensive evaluation of optimization strategies for block-based compression (from #29). Implement and benchmark: (1) block-level decompression caching (LRU in-memory cache), (2) lazy decompression (only decompress blocks on key access), (3) parallel decompression for range scans (decompress multiple blocks concurrently), (4) SIMD optimization for LZ77 match-finding and copying, (5) prefetching for sequential reads. Measure latency, throughput, and memory overhead against baseline. Generate comparison report. Depends on #29. Low priority—exploratory task to understand real-world performance gains and tradeoffs.
 
 # Closed Tasks
+
+## #51 — `COUNT` command (LSM only)
+
+`COUNT <prefix>` (op 15) and `COUNT <start> <end>` (op 16), LSM-only: returns the number of live keys starting with the prefix (or in the inclusive range), without materialising values. Disambiguated by arity. Implemented via three-tier merge (SSTables → immutable memtable → active memtable) into a `BTreeSet<String>` — same tombstone and expiry handling as `PREFIX`/`RANGE` but values never stored. `prefix_successor` reused for SSTable pruning in `count_prefix`; inverted-range early return in `count_range`. KV engine returns an error. `stats.reads` bumped by 1 per call. Wired through BFFP (`CountPrefix=15`, `CountRange=16`), cli arity-dispatch arm, `RangeScan` trait extension, `LsmEngine` impl, and dispatch. New suites: `tests/lsm_count.rs` (18 engine-level tests including differential equivalence) and `tests/count_command.rs` (16 integration tests: BFFP round-trips, CLI parse, dispatch/stats). Full suite 381 passed / 0 failed.
+
+Spec: `docs/superpowers/specs/2026-05-24-count-command-design.md`
+
+PR: <https://github.com/SilvioPilato/rustikv/pull/48>
 
 ## #50 — `PREFIX` command (LSM only)
 
