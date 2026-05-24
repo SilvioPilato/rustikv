@@ -104,7 +104,7 @@ Comprehensive evaluation of optimization strategies for block-based compression 
 
 Spec: `docs/superpowers/specs/2026-05-24-prefix-command-design.md`
 
-PR: _(link added after opening)_
+PR: <https://github.com/SilvioPilato/rustikv/pull/47>
 
 ## #55 — `INCR` command
 
