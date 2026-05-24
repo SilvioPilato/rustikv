@@ -1,10 +1,6 @@
 # In Progress
 
-## #50 — `PREFIX` command (LSM only)
-
-Add a `PREFIX <prefix>` TCP command that returns all key-value pairs whose keys start with the given string. LSM-only — implemented as a range scan `[prefix, prefix\xff]` on the sorted memtable and SSTables. The KV engine returns an error. Depends on #48 (`RANGE`) since it's a specialisation of range scan. Depends on #30 (binary protocol).
-
-Design: `docs/superpowers/specs/2026-05-24-prefix-command-design.md`
+_None._
 
 # Open Tasks
 
@@ -101,6 +97,14 @@ Extend the block-based SSTable format (from #29) with per-block integrity checks
 Comprehensive evaluation of optimization strategies for block-based compression (from #29). Implement and benchmark: (1) block-level decompression caching (LRU in-memory cache), (2) lazy decompression (only decompress blocks on key access), (3) parallel decompression for range scans (decompress multiple blocks concurrently), (4) SIMD optimization for LZ77 match-finding and copying, (5) prefetching for sequential reads. Measure latency, throughput, and memory overhead against baseline. Generate comparison report. Depends on #29. Low priority—exploratory task to understand real-world performance gains and tradeoffs.
 
 # Closed Tasks
+
+## #50 — `PREFIX` command (LSM only)
+
+`PREFIX <prefix>` (op code 14), LSM-only: returns all live `(key, value)` pairs whose keys `start_with(prefix)`, in sorted order, via a three-tier merge (SSTables → immutable memtable → active memtable) with tombstone and expiry handling identical to `RANGE`. KV engine returns an error. A `prefix_successor` helper in `utils.rs` computes the lexicographic upper bound for `iter_files_for_range` segment pruning (invariant 2), correctly handling the surrogate gap and `char::MAX` carry; empty prefix or an all-`char::MAX` prefix has no finite successor so all segments are scanned (invariant 9). Wired through BFFP (`Command::Prefix`, `OpCode::Prefix = 14`, single-key frame), cli `"PREFIX"` arm, and dispatch. New suites: `tests/prefix_successor.rs` (7 tests, all invariant-3 edge cases), `tests/lsmengine.rs` prefix section (8 tests including differential pruning-soundness test), `tests/rustikli.rs` parse tests, `tests/prefix_command.rs` (4 tests, round-trip + KV-not-supported). Full suite passed / 0 failed.
+
+Spec: `docs/superpowers/specs/2026-05-24-prefix-command-design.md`
+
+PR: _(link added after opening)_
 
 ## #55 — `INCR` command
 
