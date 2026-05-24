@@ -70,6 +70,8 @@ Add a `COUNT` TCP command that returns the number of live keys matching a query 
 
 Spec: `docs/superpowers/specs/2026-05-24-count-command-design.md`
 
+Spec PR: <https://github.com/SilvioPilato/rustikv/pull/48>
+
 ## #52 — `FIRST` and `LAST` commands (LSM only)
 
 Add `FIRST` and `LAST` TCP commands that return the lexicographically smallest and largest live keys (with their values). LSM-only — trivially answered from the `BTreeMap` memtable and the first/last entries of the oldest/newest SSTables. The KV engine returns an error.
