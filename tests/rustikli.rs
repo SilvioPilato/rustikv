@@ -124,6 +124,26 @@ fn quit_is_case_insensitive() {
     assert!(matches!(parse_command("quit"), ParseResult::Quit));
 }
 
+// --- PREFIX ---
+
+#[test]
+fn parses_prefix_command() {
+    let cmd = as_cmd(parse_command("PREFIX cpu:"));
+    assert!(matches!(cmd, Command::Prefix(p) if p == "cpu:"));
+}
+
+#[test]
+fn prefix_wrong_arity_is_invalid() {
+    assert!(matches!(
+        parse_command("PREFIX"),
+        ParseResult::InvalidInput(_)
+    ));
+    assert!(matches!(
+        parse_command("PREFIX a b"),
+        ParseResult::InvalidInput(_)
+    ));
+}
+
 // --- Edge cases ---
 
 #[test]
