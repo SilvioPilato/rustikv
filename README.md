@@ -172,7 +172,7 @@ The server uses a **binary length-prefixed protocol** (not plain text). Each req
 | `TTL <key> <seconds>` | 12 | Sets the expiry of an existing `key` to `seconds` from now; expired keys are logically absent on reads and dropped at compaction (surviving TTLs preserved). `seconds = 0` strips the expiry (PERSIST). Returns OK if `key` exists, NOT_FOUND if absent. Both engines. The `rustikli` helpers `WRITETTL <key> <seconds> <value>` and `MWRITETTL <seconds> <k1> <v1> ...` set values with a TTL in one step (they ride op codes 2/10 with the TTL flag set) |
 | `INCR <key>` | 13 | Atomically increments the integer value stored at `key` (creating it at `1` if absent) and returns the new value. Both engines. Errors if the existing value is not a valid `i64` or if the increment would overflow. Any existing TTL on the key is preserved |
 | `PREFIX <prefix>` | 14 | **LSM only.** Returns all live key-value pairs whose keys start with `<prefix>`, in sorted order. Response is a flat list of `key, value` pairs. Empty prefix returns all live keys. Returns an error on the KV engine |
-| `COUNT <prefix>` | 15 | **LSM only.** Returns the number of live keys whose keys start with `<prefix>`. Empty prefix counts all live keys. Returns a single integer. Returns an error on the KV engine |
+| `COUNT <prefix>` | 15 | **LSM only.** Returns the number of live keys starting with `<prefix>`. Empty prefix counts all live keys. Returns a single integer. Returns an error on the KV engine |
 | `COUNT <start> <end>` | 16 | **LSM only.** Returns the number of live keys in the inclusive range `[start, end]`. Returns 0 if `start > end`. Returns a single integer. Returns an error on the KV engine |
 
 ### STATS fields
