@@ -861,3 +861,125 @@ fn concurrent_overwrite_last_writer_wins() {
         "value should come from a writer thread: {val}"
     );
 }
+
+// --- PREFIX (RangeScan::prefix) tests ---
+
+#[test]
+fn prefix_basic_memtable() {
+    let dir = temp_dir("prefix_basic");
+    let engine = new_engine(&dir, "test", BIG_MEMTABLE).unwrap();
+    engine.set("cpu:a", "1").unwrap();
+    engine.set("cpu:b", "2").unwrap();
+    engine.set("mem:a", "3").unwrap();
+
+    let results = engine.prefix("cpu:").unwrap();
+    assert_eq!(
+        results,
+        vec![
+            ("cpu:a".to_string(), "1".to_string()),
+            ("cpu:b".to_string(), "2".to_string()),
+        ]
+    );
+}
+
+#[test]
+fn prefix_excludes_non_matching_boundary() {
+    // Inv 1: starts_with, NOT range <=. "cpu" must not match "cpv".
+    let dir = temp_dir("prefix_boundary");
+    let engine = new_engine(&dir, "test", BIG_MEMTABLE).unwrap();
+    engine.set("cpu1", "1").unwrap();
+    engine.set("cpv", "2").unwrap();
+
+    let results = engine.prefix("cpu").unwrap();
+    assert_eq!(results, vec![("cpu1".to_string(), "1".to_string())]);
+}
+
+#[test]
+fn prefix_full_key_match() {
+    let dir = temp_dir("prefix_fullkey");
+    let engine = new_engine(&dir, "test", BIG_MEMTABLE).unwrap();
+    engine.set("cpu", "1").unwrap();
+    let results = engine.prefix("cpu").unwrap();
+    assert_eq!(results, vec![("cpu".to_string(), "1".to_string())]);
+}
+
+#[test]
+fn prefix_no_match_returns_empty() {
+    let dir = temp_dir("prefix_nomatch");
+    let engine = new_engine(&dir, "test", BIG_MEMTABLE).unwrap();
+    engine.set("cpu:a", "1").unwrap();
+    assert!(engine.prefix("disk:").unwrap().is_empty());
+}
+
+#[test]
+fn prefix_empty_returns_all_live_keys() {
+    // Inv 9: empty prefix matches everything
+    let dir = temp_dir("prefix_empty");
+    let engine = new_engine(&dir, "test", BIG_MEMTABLE).unwrap();
+    engine.set("a", "1").unwrap();
+    engine.set("b", "2").unwrap();
+    let keys: Vec<String> = engine
+        .prefix("")
+        .unwrap()
+        .into_iter()
+        .map(|(k, _)| k)
+        .collect();
+    assert_eq!(keys, vec!["a".to_string(), "b".to_string()]);
+}
+
+#[test]
+fn prefix_tombstone_suppression() {
+    // Inv 4: tombstone in newer tier shadows live value in older tier
+    let dir = temp_dir("prefix_tomb");
+    let engine = new_engine(&dir, "test", BIG_MEMTABLE).unwrap();
+    engine.set("cpu:a", "1").unwrap();
+    engine.set("cpu:b", "2").unwrap();
+    engine.delete("cpu:b").unwrap();
+    let results = engine.prefix("cpu:").unwrap();
+    assert_eq!(results, vec![("cpu:a".to_string(), "1".to_string())]);
+}
+
+#[test]
+fn prefix_returns_sorted_order() {
+    // Inv 6: output is ascending by key
+    let dir = temp_dir("prefix_sorted");
+    let engine = new_engine(&dir, "test", BIG_MEMTABLE).unwrap();
+    engine.set("cpu:c", "3").unwrap();
+    engine.set("cpu:a", "1").unwrap();
+    engine.set("cpu:b", "2").unwrap();
+    let keys: Vec<String> = engine
+        .prefix("cpu:")
+        .unwrap()
+        .into_iter()
+        .map(|(k, _)| k)
+        .collect();
+    assert_eq!(keys, vec!["cpu:a", "cpu:b", "cpu:c"]);
+}
+
+#[test]
+fn prefix_pruning_is_result_neutral_across_segments() {
+    // Inv 2: matching keys scattered across multiple SSTables. Use a tiny
+    // memtable threshold so each write flushes to its own segment; reload, then
+    // assert prefix() == brute-force starts_with over list_keys()+get().
+    let dir = temp_dir("prefix_pruning");
+    {
+        let engine = new_engine(&dir, "test", 1).unwrap(); // tiny -> flush per write
+        engine.set("aaa", "1").unwrap();
+        engine.set("cpu:1", "x").unwrap();
+        engine.set("mmm", "2").unwrap();
+        engine.set("cpu:2", "y").unwrap();
+        engine.set("zzz", "3").unwrap();
+    } // drop joins background flush
+    let engine = engine_from_dir(&dir, "test", BIG_MEMTABLE).unwrap();
+
+    let mut expected: Vec<(String, String)> = engine
+        .list_keys()
+        .unwrap()
+        .into_iter()
+        .filter(|k| k.starts_with("cpu:"))
+        .map(|k| (k.clone(), engine.get(&k).unwrap().unwrap().1))
+        .collect();
+    expected.sort();
+
+    assert_eq!(engine.prefix("cpu:").unwrap(), expected);
+}

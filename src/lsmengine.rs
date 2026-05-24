@@ -1,4 +1,4 @@
-use std::ops::Bound::Included;
+use std::ops::Bound::{Included, Unbounded};
 use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
@@ -11,7 +11,7 @@ use std::{
 
 use crate::engine::TtlOutcome;
 use crate::storage_strategy::StorageStrategy;
-use crate::utils::{is_expired, now_ms};
+use crate::utils::{is_expired, now_ms, prefix_successor};
 use crate::{
     engine::{RangeScan, StorageEngine},
     memtable::Memtable,
@@ -581,6 +581,75 @@ impl RangeScan for LsmEngine {
     }
 
     fn prefix(&self, prefix: &str) -> io::Result<Vec<(String, String)>> {
-        todo!()
+        let now_ms = now_ms();
+        let mut b_map: BTreeMap<String, String> = BTreeMap::new();
+
+        // Pruning hint only (Inv 2). None => no finite successor, scan all (Inv 3/9).
+        let successor = prefix_successor(prefix);
+
+        {
+            let storage_strategy = self.shared.storage_strategy.read().unwrap();
+            let segments: Vec<&SSTable> = match successor.as_deref() {
+                Some(end) => storage_strategy.iter_files_for_range(prefix, end).collect(),
+                None => storage_strategy.iter_all().collect(),
+            };
+            for segment in segments {
+                for result in segment.iter()? {
+                    let record = result?;
+                    if !record.key.starts_with(prefix) {
+                        continue; // Inv 1
+                    }
+                    if let Some(expiry_ms) = record.header.expiry_ms
+                        && is_expired(expiry_ms, now_ms)
+                    {
+                        b_map.remove(&record.key);
+                        continue;
+                    }
+                    if record.header.is_tombstone() {
+                        b_map.remove(&record.key);
+                        continue;
+                    }
+                    b_map.insert(record.key, record.value);
+                }
+            }
+        }
+
+        {
+            let immutable = self.shared.immutable.read().unwrap();
+            if let Some(memtable) = immutable.as_ref() {
+                for (k, entry) in memtable
+                    .entries()
+                    .range::<str, _>((Included(prefix), Unbounded))
+                {
+                    if !k.starts_with(prefix) {
+                        break; // sorted keys: matches are contiguous from `prefix`
+                    }
+                    match (entry.value.as_deref(), entry.expiry_ms) {
+                        (Some(_), Some(ms)) if is_expired(ms, now_ms) => b_map.remove(k),
+                        (Some(val), _) => b_map.insert(k.clone(), val.to_string()),
+                        (None, _) => b_map.remove(k),
+                    };
+                }
+            }
+        }
+
+        {
+            let memtable = self.shared.active.read().unwrap();
+            for (k, entry) in memtable
+                .entries()
+                .range::<str, _>((Included(prefix), Unbounded))
+            {
+                if !k.starts_with(prefix) {
+                    break;
+                }
+                match (entry.value.as_deref(), entry.expiry_ms) {
+                    (Some(_), Some(ms)) if is_expired(ms, now_ms) => b_map.remove(k),
+                    (Some(val), _) => b_map.insert(k.clone(), val.to_string()),
+                    (None, _) => b_map.remove(k),
+                };
+            }
+        }
+
+        Ok(b_map.into_iter().collect())
     }
 }
