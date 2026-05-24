@@ -1,6 +1,10 @@
 # In Progress
 
-_None._
+## #50 — `PREFIX` command (LSM only)
+
+Add a `PREFIX <prefix>` TCP command that returns all key-value pairs whose keys start with the given string. LSM-only — implemented as a range scan `[prefix, prefix\xff]` on the sorted memtable and SSTables. The KV engine returns an error. Depends on #48 (`RANGE`) since it's a specialisation of range scan. Depends on #30 (binary protocol).
+
+Design: `docs/superpowers/specs/2026-05-24-prefix-command-design.md`
 
 # Open Tasks
 
@@ -63,10 +67,6 @@ Extend the `STATS` command to include which engine is active, segment count, tot
 ## #43 — `DBINFO` command
 
 Add a TCP command that dumps internal storage state: segment file listing, index size, bloom filter stats (estimated false positive rate), hint file presence, sparse index entry count. Lets you observe compaction shrinking segments and see the sparse index in action.
-
-## #50 — `PREFIX` command (LSM only)
-
-Add a `PREFIX <prefix>` TCP command that returns all key-value pairs whose keys start with the given string. LSM-only — implemented as a range scan `[prefix, prefix\xff]` on the sorted memtable and SSTables. The KV engine returns an error. Depends on #48 (`RANGE`) since it's a specialisation of range scan. Depends on #30 (binary protocol).
 
 ## #51 — `COUNT` command (LSM only)
 
