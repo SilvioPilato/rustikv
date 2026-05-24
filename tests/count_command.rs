@@ -1,5 +1,18 @@
-use rustikv::bffp::{Command, decode_input_frame, decode_response_frame, encode_command};
+use rustikv::bffp::{
+    Command, ResponseStatus, decode_input_frame, decode_response_frame, encode_command,
+};
 use rustikv::cli::{ParseResult, parse_command};
+use rustikv::engine::StorageEngine;
+use rustikv::kvengine::KVEngine;
+use rustikv::lsmengine::LsmEngine;
+use rustikv::server::{CompactionCfg, dispatch};
+use rustikv::settings::FSyncStrategy;
+use rustikv::size_tiered::SizeTiered;
+use rustikv::stats::Stats;
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::{env, fs};
 
 // --- CountPrefix round-trips ---
 
@@ -97,19 +110,6 @@ fn cli_count_case_insensitive() {
         _ => panic!("expected CountPrefix"),
     }
 }
-
-use rustikv::bffp::ResponseStatus;
-use rustikv::engine::StorageEngine;
-use rustikv::kvengine::KVEngine;
-use rustikv::lsmengine::LsmEngine;
-use rustikv::server::{CompactionCfg, dispatch};
-use rustikv::settings::FSyncStrategy;
-use rustikv::size_tiered::SizeTiered;
-use rustikv::stats::Stats;
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::{env, fs};
 
 fn temp_dir_d(suffix: &str) -> String {
     let nanos = SystemTime::now()
