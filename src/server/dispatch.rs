@@ -244,6 +244,7 @@ pub fn dispatch(
                 Err(error) => encode_frame(ResponseStatus::Error, &[error.to_string()]),
             }
         }
+        Command::Prefix(_) => todo!(),
     }
 }
 
