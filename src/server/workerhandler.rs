@@ -147,6 +147,25 @@ impl EventHandler for WorkerHandler {
                 eprintln!("register failed: {e}");
                 continue;
             }
+            // Reap connections that are already closed at registration time.
+            //
+            // `active_connections` is incremented when the `Connection` is built
+            // below, but for a connection that is already at EOF the matching
+            // decrement (in `Connection::Drop`) only runs after its readable
+            // event round-trips through a later poll iteration. During that
+            // window the dead connection counts against `max_connections`, so a
+            // connection arriving right behind it can be wrongly rejected — the
+            // cause of the flaky `cap_releases_after_holders_disconnect`. A
+            // non-consuming peek detects the already-pending EOF synchronously
+            // and drops the socket before it ever occupies a slot, closing the
+            // race. Data already buffered (`Ok(n)`) or none yet (`WouldBlock`)
+            // is a live connection and is admitted normally; its readiness is
+            // delivered through the usual event path.
+            let mut probe = [0u8; 1];
+            if let Ok(0) = stream.peek(&mut probe) {
+                let _ = registry.deregister(&mut stream);
+                continue;
+            }
             self.conns
                 .insert(token, Connection::new(stream, self.stats.clone()));
         }
