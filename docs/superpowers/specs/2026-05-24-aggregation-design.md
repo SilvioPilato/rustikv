@@ -37,7 +37,9 @@ The KV engine returns a not-supported error for all 8 op codes, exactly as
   "Not found" response — for all four commands — reusing GET's missing-key path.
   This mirrors SQL `NULL` semantics; `0` or `NaN` would be misleading.
 - **Result format**: `format!("{:?}", value)` — always includes the decimal point
-  (`"1.0"`, `"1.5"`), consistent with the `f64` type.
+  (`"1.0"`, `"1.5"`), consistent with the `f64` type. Non-finite results
+  (`"inf"`, `"-inf"`, `"NaN"`) are not explicitly forbidden; they arise naturally
+  if all matching values parse to `f64::INFINITY` etc. and are returned as-is.
 - **`stats.reads`** is bumped by 1 per call, same as COUNT.
 
 ## Layers
@@ -100,7 +102,7 @@ fn max_range(&self, start: &str, end: &str) -> io::Result<Option<f64>>;
 
 ### Engine implementation — `src/lsmengine.rs`
 
-One private free function keeps the fold logic single-sourced:
+One private (no `pub`) free function keeps the fold logic single-sourced:
 
 ```rust
 fn resolve_numeric(op: &str, pairs: Vec<(String, String)>) -> io::Result<Vec<f64>>
@@ -118,8 +120,8 @@ Each of the 8 `RangeScan` impl methods:
 4. Otherwise computes and returns `Ok(Some(result))`:
    - `SUM`: `nums.iter().sum()`
    - `AVG`: `let s: f64 = nums.iter().sum(); Ok(Some(s / nums.len() as f64))`
-   - `MIN`: `nums.iter().cloned().fold(f64::INFINITY, f64::min)`
-   - `MAX`: `nums.iter().cloned().fold(f64::NEG_INFINITY, f64::max)`
+   - `MIN`: `nums.iter().fold(f64::INFINITY, |acc, &x| acc.min(x))`
+   - `MAX`: `nums.iter().fold(f64::NEG_INFINITY, |acc, &x| acc.max(x))`
 
 ### Dispatch — `src/server/dispatch.rs`
 
