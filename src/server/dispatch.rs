@@ -303,6 +303,17 @@ pub fn dispatch(
                 ),
             }
         }
+        Command::SumPrefix(_)
+        | Command::SumRange(_, _)
+        | Command::AvgPrefix(_)
+        | Command::AvgRange(_, _)
+        | Command::MinPrefix(_)
+        | Command::MinRange(_, _)
+        | Command::MaxPrefix(_)
+        | Command::MaxRange(_, _) => encode_frame(
+            ResponseStatus::Error,
+            &["aggregation commands not yet implemented".to_string()],
+        ),
     }
 }
 
