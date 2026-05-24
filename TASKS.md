@@ -76,10 +76,6 @@ Add a `COUNT <start> <end>` TCP command that returns the number of live keys in 
 
 Add `FIRST` and `LAST` TCP commands that return the lexicographically smallest and largest live keys (with their values). LSM-only — trivially answered from the `BTreeMap` memtable and the first/last entries of the oldest/newest SSTables. The KV engine returns an error.
 
-## #55 — `INCR` command
-
-Add an `INCR <key>` TCP command that atomically increments an integer value stored at a key (creating it at 1 if absent). Returns the new value. Teaches read-modify-write atomicity — must be handled under the engine's write lock to avoid races. Supported by both engines.
-
 ## #58 — `FLUSH` command (LSM only)
 
 Add a `FLUSH` TCP command that forces an immediate memtable flush to a new SSTable, regardless of whether the flush threshold has been reached. LSM-only. Useful for testing, observability, and ensuring durability on demand. The KV engine returns an error (it has no memtable to flush).
@@ -105,6 +101,12 @@ Extend the block-based SSTable format (from #29) with per-block integrity checks
 Comprehensive evaluation of optimization strategies for block-based compression (from #29). Implement and benchmark: (1) block-level decompression caching (LRU in-memory cache), (2) lazy decompression (only decompress blocks on key access), (3) parallel decompression for range scans (decompress multiple blocks concurrently), (4) SIMD optimization for LZ77 match-finding and copying, (5) prefetching for sequential reads. Measure latency, throughput, and memory overhead against baseline. Generate comparison report. Depends on #29. Low priority—exploratory task to understand real-world performance gains and tradeoffs.
 
 # Closed Tasks
+
+## #55 — `INCR` command
+
+`INCR <key>` (op code 13) on both engines: atomic increment of an `i64` value, creating the key at `1` if absent and returning the new value. Implemented as a read-modify-write held under each engine's canonical write-lock span — reusing #56's lock-free helpers (`lookup`/`apply_write` on LSM; `kv_lookup`/`kv_append` on KV) — so concurrent increments cannot lose updates. Existing per-key TTL is preserved across the increment (Redis-compatible): `lookup`/`kv_lookup` (and `SSTable::get`, via the new `SegmentProbe` type alias) were widened from returning just the value to returning the surviving `expiry_ms` alongside it; the `ttl`/`set`/`get` call sites ignore the new field. Non-integer values and `i64` overflow return an error without mutating. Wired through BFFP (`Command::Incr`, `OpCode::Incr = 13`, single-key frame), the `INCR` rustikli command, and dispatch (returns the new value as the payload; non-integer/overflow → `Error`, bumps `writes` + compaction check). New suites `kv_incr`/`lsm_incr`/`incr_command` — including an 8×500 lost-update atomicity regression and a TTL-preservation test — plus cli parse tests. Full suite 342 passed / 0 failed. Also backfills the README command table with the previously-undocumented `TTL` (op 12) row alongside the new `INCR` (op 13).
+
+PR: _pending_
 
 ## #56 — `TTL` command
 

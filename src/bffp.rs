@@ -26,6 +26,7 @@ pub enum Command {
     Mset(Vec<(String, String, Option<u32>)>),
     Range(String, String),
     Ttl(String, u32),
+    Incr(String),
 }
 
 #[repr(u8)]
@@ -42,6 +43,7 @@ pub enum OpCode {
     Mset = 10,
     Range = 11,
     Ttl = 12,
+    Incr = 13,
 }
 
 impl TryFrom<u8> for OpCode {
@@ -61,6 +63,7 @@ impl TryFrom<u8> for OpCode {
             10 => Ok(OpCode::Mset),
             11 => Ok(OpCode::Range),
             12 => Ok(OpCode::Ttl),
+            13 => Ok(OpCode::Incr),
             n => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("unknown op code: {n}"),
@@ -164,6 +167,7 @@ pub fn decode_input_frame(buffer: &[u8]) -> io::Result<Command> {
             let ttl = read_ttl(&mut cur)?;
             Ok(Command::Ttl(key, ttl))
         }
+        Ok(OpCode::Incr) => Ok(Command::Incr(read_key(&mut cur)?)),
         Err(_) => Ok(Command::Invalid(op_buf[0])),
     }
 }
@@ -407,6 +411,21 @@ pub fn encode_command(command: Command) -> Vec<u8> {
             payload.write_all(&key_len.to_be_bytes()).unwrap();
             payload.write_all(key.as_bytes()).unwrap();
             payload.write_all(&expiry.to_be_bytes()).unwrap();
+
+            payload.into_inner()
+        }
+        Command::Incr(key) => {
+            // | total_len(4) | OpCode::Incr(1) | key_len(2) | key |
+            let total_len = (OP_CODE_SIZE + KEY_LEN_SIZE + key.len()) as u32;
+            let key_len = key.len() as u16;
+
+            payload.write_all(&total_len.to_be_bytes()).unwrap();
+
+            payload.write_all(&[OpCode::Incr as u8]).unwrap();
+
+            payload.write_all(&key_len.to_be_bytes()).unwrap();
+
+            payload.write_all(key.as_bytes()).unwrap();
 
             payload.into_inner()
         }

@@ -24,6 +24,7 @@ pub trait StorageEngine: Send + Sync {
     fn mset(&self, items: Vec<(String, String)>) -> io::Result<()> {
         self.mset_with_ttl(items.into_iter().map(|(k, v)| (k, v, None)).collect())
     }
+    fn incr(&self, key: &str) -> io::Result<i64>;
 }
 
 pub trait RangeScan {

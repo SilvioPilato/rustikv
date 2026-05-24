@@ -182,15 +182,15 @@ fn test_sstable_get_from_blocks() {
 
     assert_eq!(
         sstable.get("alpha").unwrap(),
-        Some(Some("apple".to_string()))
+        Some(Some(("apple".to_string(), None)))
     );
     assert_eq!(
         sstable.get("bravo").unwrap(),
-        Some(Some("banana".to_string()))
+        Some(Some(("banana".to_string(), None)))
     );
     assert_eq!(
         sstable.get("charlie").unwrap(),
-        Some(Some("cherry".to_string()))
+        Some(Some(("cherry".to_string(), None)))
     );
     assert_eq!(sstable.get("delta").unwrap(), None);
 }
@@ -238,11 +238,11 @@ fn test_sstable_rebuild_index() {
 
     assert_eq!(
         sstable.get("key00").unwrap(),
-        Some(Some("val0".to_string()))
+        Some(Some(("val0".to_string(), None)))
     );
     assert_eq!(
         sstable.get("key09").unwrap(),
-        Some(Some("val9".to_string()))
+        Some(Some(("val9".to_string(), None)))
     );
 }
 

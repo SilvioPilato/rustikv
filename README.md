@@ -169,6 +169,8 @@ The server uses a **binary length-prefixed protocol** (not plain text). Each req
 | `MGET <key1> <key2> ...` | 9 | Fetches multiple keys in one round trip. Response is a flat list of `key, value` pairs; missing keys return a null byte (`\0`) as the value |
 | `MSET <k1> <v1> <k2> <v2> ...` | 10 | Writes multiple key-value pairs in one round trip |
 | `RANGE <start> <end>` | 11 | **LSM only.** Returns all live key-value pairs whose keys fall in the inclusive range `[start, end]`, in sorted order. Response is a flat list of `key, value` pairs. Returns an error on the KV engine (hash index has no ordering). Returns empty if `start > end` |
+| `TTL <key> <seconds>` | 12 | Sets the expiry of an existing `key` to `seconds` from now; expired keys are logically absent on reads and dropped at compaction (surviving TTLs preserved). `seconds = 0` strips the expiry (PERSIST). Returns OK if `key` exists, NOT_FOUND if absent. Both engines. The `rustikli` helpers `WRITETTL <key> <seconds> <value>` and `MWRITETTL <seconds> <k1> <v1> ...` set values with a TTL in one step (they ride op codes 2/10 with the TTL flag set) |
+| `INCR <key>` | 13 | Atomically increments the integer value stored at `key` (creating it at `1` if absent) and returns the new value. Both engines. Errors if the existing value is not a valid `i64` or if the increment would overflow. Any existing TTL on the key is preserved |
 
 ### STATS fields
 
