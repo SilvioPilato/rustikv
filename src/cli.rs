@@ -89,6 +89,13 @@ pub fn parse_command(line: &str) -> ParseResult {
                 ParseResult::InvalidInput("Usage: RANGE <start> <end>".to_string())
             }
         }
+        "PREFIX" => {
+            if words.len() == 2 {
+                ParseResult::Cmd(Command::Prefix(words[1].to_string()))
+            } else {
+                ParseResult::InvalidInput("Usage: PREFIX <prefix>".to_string())
+            }
+        }
         "TTL" => {
             if words.len() == 3 {
                 match words[2].parse::<u32>() {
