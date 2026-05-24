@@ -668,7 +668,7 @@ impl RangeScan for LsmEngine {
                 for result in segment.iter()? {
                     let record = result?;
                     if !record.key.starts_with(prefix) {
-                        continue;
+                        continue; // Inv 1
                     }
                     if let Some(expiry_ms) = record.header.expiry_ms
                         && is_expired(expiry_ms, now_ms)
@@ -696,15 +696,9 @@ impl RangeScan for LsmEngine {
                         break;
                     }
                     match (entry.value.as_deref(), entry.expiry_ms) {
-                        (Some(_), Some(ms)) if is_expired(ms, now_ms) => {
-                            set.remove(k);
-                        }
-                        (Some(_), _) => {
-                            set.insert(k.clone());
-                        }
-                        (None, _) => {
-                            set.remove(k);
-                        }
+                        (Some(_), Some(ms)) if is_expired(ms, now_ms) => set.remove(k),
+                        (Some(_), _) => set.insert(k.clone()),
+                        (None, _) => set.remove(k),
                     };
                 }
             }
@@ -720,15 +714,9 @@ impl RangeScan for LsmEngine {
                     break;
                 }
                 match (entry.value.as_deref(), entry.expiry_ms) {
-                    (Some(_), Some(ms)) if is_expired(ms, now_ms) => {
-                        set.remove(k);
-                    }
-                    (Some(_), _) => {
-                        set.insert(k.clone());
-                    }
-                    (None, _) => {
-                        set.remove(k);
-                    }
+                    (Some(_), Some(ms)) if is_expired(ms, now_ms) => set.remove(k),
+                    (Some(_), _) => set.insert(k.clone()),
+                    (None, _) => set.remove(k),
                 };
             }
         }
@@ -775,15 +763,9 @@ impl RangeScan for LsmEngine {
                     .range::<str, _>((Included(start), Included(end)))
                 {
                     match (entry.value.as_deref(), entry.expiry_ms) {
-                        (Some(_), Some(ms)) if is_expired(ms, now_ms) => {
-                            set.remove(k);
-                        }
-                        (Some(_), _) => {
-                            set.insert(k.clone());
-                        }
-                        (None, _) => {
-                            set.remove(k);
-                        }
+                        (Some(_), Some(ms)) if is_expired(ms, now_ms) => set.remove(k),
+                        (Some(_), _) => set.insert(k.clone()),
+                        (None, _) => set.remove(k),
                     };
                 }
             }
@@ -796,15 +778,9 @@ impl RangeScan for LsmEngine {
                 .range::<str, _>((Included(start), Included(end)))
             {
                 match (entry.value.as_deref(), entry.expiry_ms) {
-                    (Some(_), Some(ms)) if is_expired(ms, now_ms) => {
-                        set.remove(k);
-                    }
-                    (Some(_), _) => {
-                        set.insert(k.clone());
-                    }
-                    (None, _) => {
-                        set.remove(k);
-                    }
+                    (Some(_), Some(ms)) if is_expired(ms, now_ms) => set.remove(k),
+                    (Some(_), _) => set.insert(k.clone()),
+                    (None, _) => set.remove(k),
                 };
             }
         }
