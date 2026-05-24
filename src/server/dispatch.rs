@@ -265,6 +265,9 @@ pub fn dispatch(
                 ),
             }
         }
+        Command::CountPrefix(_) | Command::CountRange(_, _) => {
+            encode_frame(ResponseStatus::Error, &["not yet implemented".to_string()])
+        }
     }
 }
 
