@@ -244,7 +244,27 @@ pub fn dispatch(
                 Err(error) => encode_frame(ResponseStatus::Error, &[error.to_string()]),
             }
         }
-        Command::Prefix(_) => todo!(),
+        Command::Prefix(prefix) => {
+            log_verbose(format!("Parsed PREFIX command: prefix='{}'", prefix));
+            match database.as_any().downcast_ref::<LsmEngine>() {
+                Some(lsm) => match lsm.prefix(&prefix) {
+                    Ok(results) => {
+                        let results_count = results.len();
+                        let res: Vec<String> =
+                            results.into_iter().flat_map(|(k, v)| [k, v]).collect();
+                        stats
+                            .reads
+                            .fetch_add(results_count as u64, Ordering::Relaxed);
+                        encode_frame(ResponseStatus::Ok, &res)
+                    }
+                    Err(error) => encode_frame(ResponseStatus::Error, &[error.to_string()]),
+                },
+                None => encode_frame(
+                    ResponseStatus::Error,
+                    &["PREFIX not supported by KV engine".to_string()],
+                ),
+            }
+        }
     }
 }
 
