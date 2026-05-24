@@ -513,6 +513,22 @@ impl StorageEngine for LsmEngine {
     }
 }
 
+fn resolve_numeric(op: &str, pairs: Vec<(String, String)>) -> io::Result<Vec<f64>> {
+    let mut nums = Vec::with_capacity(pairs.len());
+    for (k, v) in pairs {
+        match v.parse::<f64>() {
+            Ok(n) => nums.push(n),
+            Err(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("{op}: non-numeric value for key {k}"),
+                ));
+            }
+        }
+    }
+    Ok(nums)
+}
+
 impl RangeScan for LsmEngine {
     fn range(&self, start: &str, end: &str) -> io::Result<Vec<(String, String)>> {
         if start > end {
@@ -786,5 +802,83 @@ impl RangeScan for LsmEngine {
         }
 
         Ok(set.len())
+    }
+
+    fn sum_prefix(&self, prefix: &str) -> io::Result<Option<f64>> {
+        let pairs = self.prefix(prefix)?;
+        let nums = resolve_numeric("SUM", pairs)?;
+        if nums.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(nums.iter().sum()))
+    }
+
+    fn sum_range(&self, start: &str, end: &str) -> io::Result<Option<f64>> {
+        let pairs = self.range(start, end)?;
+        let nums = resolve_numeric("SUM", pairs)?;
+        if nums.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(nums.iter().sum()))
+    }
+
+    fn avg_prefix(&self, prefix: &str) -> io::Result<Option<f64>> {
+        let pairs = self.prefix(prefix)?;
+        let nums = resolve_numeric("AVG", pairs)?;
+        if nums.is_empty() {
+            return Ok(None);
+        }
+        let s: f64 = nums.iter().sum();
+        Ok(Some(s / nums.len() as f64))
+    }
+
+    fn avg_range(&self, start: &str, end: &str) -> io::Result<Option<f64>> {
+        let pairs = self.range(start, end)?;
+        let nums = resolve_numeric("AVG", pairs)?;
+        if nums.is_empty() {
+            return Ok(None);
+        }
+        let s: f64 = nums.iter().sum();
+        Ok(Some(s / nums.len() as f64))
+    }
+
+    fn min_prefix(&self, prefix: &str) -> io::Result<Option<f64>> {
+        let pairs = self.prefix(prefix)?;
+        let nums = resolve_numeric("MIN", pairs)?;
+        if nums.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(nums.iter().fold(f64::INFINITY, |acc, &x| acc.min(x))))
+    }
+
+    fn min_range(&self, start: &str, end: &str) -> io::Result<Option<f64>> {
+        let pairs = self.range(start, end)?;
+        let nums = resolve_numeric("MIN", pairs)?;
+        if nums.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(nums.iter().fold(f64::INFINITY, |acc, &x| acc.min(x))))
+    }
+
+    fn max_prefix(&self, prefix: &str) -> io::Result<Option<f64>> {
+        let pairs = self.prefix(prefix)?;
+        let nums = resolve_numeric("MAX", pairs)?;
+        if nums.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(
+            nums.iter().fold(f64::NEG_INFINITY, |acc, &x| acc.max(x)),
+        ))
+    }
+
+    fn max_range(&self, start: &str, end: &str) -> io::Result<Option<f64>> {
+        let pairs = self.range(start, end)?;
+        let nums = resolve_numeric("MAX", pairs)?;
+        if nums.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(
+            nums.iter().fold(f64::NEG_INFINITY, |acc, &x| acc.max(x)),
+        ))
     }
 }
