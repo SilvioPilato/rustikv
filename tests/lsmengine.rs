@@ -983,3 +983,57 @@ fn prefix_pruning_is_result_neutral_across_segments() {
 
     assert_eq!(engine.prefix("cpu:").unwrap(), expected);
 }
+
+#[test]
+fn prefix_tombstone_in_memtable_hides_flushed_key() {
+    // Inv 4 cross-tier: value lives in an SSTable; tombstone in the active
+    // memtable (higher priority tier) must suppress it.
+    let dir = temp_dir("prefix_cross_tomb");
+    {
+        let engine = new_engine(&dir, "test", 1).unwrap(); // tiny -> flush per write
+        engine.set("cpu:a", "1").unwrap();
+        engine.set("cpu:b", "2").unwrap();
+    } // drop joins background flush — both keys now in SSTables
+    let engine = engine_from_dir(&dir, "test", BIG_MEMTABLE).unwrap();
+    engine.delete("cpu:b").unwrap(); // tombstone in memtable, live value in SSTable
+
+    let results = engine.prefix("cpu:").unwrap();
+    assert_eq!(results, vec![("cpu:a".to_string(), "1".to_string())]);
+}
+
+#[test]
+fn prefix_memtable_overwrite_shadows_sstable_value() {
+    // Inv 4 cross-tier: a newer write in the active memtable must win over
+    // an older value for the same key sitting in an SSTable.
+    let dir = temp_dir("prefix_cross_overwrite");
+    {
+        let engine = new_engine(&dir, "test", 1).unwrap();
+        engine.set("cpu:a", "old").unwrap();
+    } // flushed to SSTable
+    let engine = engine_from_dir(&dir, "test", BIG_MEMTABLE).unwrap();
+    engine.set("cpu:a", "new").unwrap(); // newer write lives in memtable
+
+    let results = engine.prefix("cpu:").unwrap();
+    assert_eq!(results, vec![("cpu:a".to_string(), "new".to_string())]);
+}
+
+#[test]
+fn prefix_multibyte_utf8_keys() {
+    // End-to-end: multibyte prefix correctly matches its own keys and
+    // excludes keys that share the ASCII root but differ after the
+    // multibyte character (e.g. "café:" vs "cafez").
+    let dir = temp_dir("prefix_multibyte");
+    let engine = new_engine(&dir, "test", BIG_MEMTABLE).unwrap();
+    engine.set("café:a", "1").unwrap();
+    engine.set("café:b", "2").unwrap();
+    engine.set("cafez", "3").unwrap(); // shares "cafe" but not "café"
+
+    let results = engine.prefix("café:").unwrap();
+    assert_eq!(
+        results,
+        vec![
+            ("café:a".to_string(), "1".to_string()),
+            ("café:b".to_string(), "2".to_string()),
+        ]
+    );
+}
