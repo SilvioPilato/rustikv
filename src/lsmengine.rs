@@ -579,4 +579,8 @@ impl RangeScan for LsmEngine {
 
         Ok(b_map.into_iter().collect())
     }
+
+    fn prefix(&self, prefix: &str) -> io::Result<Vec<(String, String)>> {
+        todo!()
+    }
 }

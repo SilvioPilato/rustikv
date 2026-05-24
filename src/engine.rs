@@ -29,6 +29,7 @@ pub trait StorageEngine: Send + Sync {
 
 pub trait RangeScan {
     fn range(&self, start: &str, end: &str) -> io::Result<Vec<(String, String)>>;
+    fn prefix(&self, prefix: &str) -> io::Result<Vec<(String, String)>>;
 }
 
 pub enum TtlOutcome {
