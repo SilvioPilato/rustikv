@@ -66,7 +66,9 @@ Add a TCP command that dumps internal storage state: segment file listing, index
 
 ## #51 — `COUNT` command (LSM only)
 
-Add a `COUNT <start> <end>` TCP command that returns the number of live keys in the inclusive range `[start, end]` without returning the values themselves. LSM-only. Shares the same merge-scan logic as `RANGE` but only emits a count. Depends on #48.
+Add a `COUNT` TCP command that returns the number of live keys matching a query without returning the values themselves. LSM-only. Two variants disambiguated by arity: `COUNT <prefix>` (keys starting with prefix) and `COUNT <start> <end>` (keys in inclusive range). Shares the three-tier merge-scan logic with `RANGE`/`PREFIX` but accumulates into a `BTreeSet` of live keys and emits only the count. Two op codes: `CountPrefix=15`, `CountRange=16`. Depends on #48, #50.
+
+Spec: `docs/superpowers/specs/2026-05-24-count-command-design.md`
 
 ## #52 — `FIRST` and `LAST` commands (LSM only)
 
