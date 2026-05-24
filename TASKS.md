@@ -4,6 +4,10 @@ _None._
 
 # Open Tasks
 
+## #83 — Key-only LSM scan path to avoid value materialisation in COUNT
+
+`COUNT <prefix>` and `COUNT <start> <end>` use a `BTreeSet<String>` merge to avoid *storing* values in memory, but the underlying `iter_files_for_range` / `iter_all` SSTable iterators still deserialise full `Record` structs (key + value bytes + metadata) off disk on every scan. For large values this means significant unnecessary I/O and allocation — the value is read, then immediately dropped. The same applies to any future count-style command. Two approaches worth evaluating: (1) a **key-only index** — a secondary sorted on-disk structure (one entry per live key: key + offset + tombstone flag + expiry) that COUNT/PREFIX can iterate without touching the value segment; (2) **key-only SSTable frames** — a separate serialisation path that emits only key+metadata bytes alongside the existing full-record SSTable, letting key-range scans skip value reads entirely. Either approach requires changes to the compaction pipeline (to write the key-only structure) and to `RangeScan` (to expose a key-iterator path). Depends on #51 landing (defines the COUNT semantics that motivate this). Out of scope: changing the existing `RANGE`/`PREFIX` value-returning commands (they need values).
+
 ## #82 — Size-tiered: reclaim tombstones in partial bucket merges via cross-bucket overlap check
 
 `SizeTiered::compact_if_needed` ([src/size_tiered.rs](src/size_tiered.rs)) deliberately performs **no** tombstone GC: an unconditional `drop_tombstones()` there was a resurrection bug (a tombstone can shadow an older still-live value in a *different* bucket that the partial per-bucket merge does not consume; dropping it lets that value resurface on read). It was removed under #56 (TTL), so all tombstone — and expired-record-downgraded-to-tombstone — reclamation now happens only in `compact_all`, which merges every bucket and is the sole sound GC point. The cost: between full compactions, tombstones and expired-key bytes accumulate across partial merges (space/tombstone amplification). For the telemetry workload (#56's primary use case — high volume of short-TTL keys) this makes compaction-driven reclamation weak, since `compact_all` is a heavyweight full rewrite that runs rarely. Implement Cassandra STCS-style conditional tombstone GC: in a partial bucket merge, a tombstone may be dropped only when no segment in any *other* bucket can contain that key — checked via the per-segment bloom filter plus min/max key range. Restore conditional reclamation in `compact_if_needed` behind that overlap check, preserving the safety invariant "drop a tombstone only when every older version it shadows is also removed." This is the lever to pull if telemetry reclamation proves too lazy; it interacts with the deferred background-sweeper task (TTL design Future Work #79) — implementing this may remove the need for #79 on size-tiered. Out of scope: leveled strategy (already range-partitioned and handled correctly via `is_terminal`).
@@ -64,9 +68,6 @@ Extend the `STATS` command to include which engine is active, segment count, tot
 
 Add a TCP command that dumps internal storage state: segment file listing, index size, bloom filter stats (estimated false positive rate), hint file presence, sparse index entry count. Lets you observe compaction shrinking segments and see the sparse index in action.
 
-## #51 — `COUNT` command (LSM only)
-
-Add a `COUNT <start> <end>` TCP command that returns the number of live keys in the inclusive range `[start, end]` without returning the values themselves. LSM-only. Shares the same merge-scan logic as `RANGE` but only emits a count. Depends on #48.
 
 ## #52 — `FIRST` and `LAST` commands (LSM only)
 
@@ -97,6 +98,14 @@ Extend the block-based SSTable format (from #29) with per-block integrity checks
 Comprehensive evaluation of optimization strategies for block-based compression (from #29). Implement and benchmark: (1) block-level decompression caching (LRU in-memory cache), (2) lazy decompression (only decompress blocks on key access), (3) parallel decompression for range scans (decompress multiple blocks concurrently), (4) SIMD optimization for LZ77 match-finding and copying, (5) prefetching for sequential reads. Measure latency, throughput, and memory overhead against baseline. Generate comparison report. Depends on #29. Low priority—exploratory task to understand real-world performance gains and tradeoffs.
 
 # Closed Tasks
+
+## #51 — `COUNT` command (LSM only)
+
+`COUNT <prefix>` (op 15) and `COUNT <start> <end>` (op 16), LSM-only: returns the number of live keys starting with the prefix (or in the inclusive range), without materialising values. Disambiguated by arity. Implemented via three-tier merge (SSTables → immutable memtable → active memtable) into a `BTreeSet<String>` — same tombstone and expiry handling as `PREFIX`/`RANGE` but values never stored. `prefix_successor` reused for SSTable pruning in `count_prefix`; inverted-range early return in `count_range`. KV engine returns an error. `stats.reads` bumped by 1 per call. Wired through BFFP (`CountPrefix=15`, `CountRange=16`), cli arity-dispatch arm, `RangeScan` trait extension, `LsmEngine` impl, and dispatch. New suites: `tests/lsm_count.rs` (18 engine-level tests including differential equivalence) and `tests/count_command.rs` (16 integration tests: BFFP round-trips, CLI parse, dispatch/stats). Full suite 381 passed / 0 failed.
+
+Spec: `docs/superpowers/specs/2026-05-24-count-command-design.md`
+
+PR: <https://github.com/SilvioPilato/rustikv/pull/48>
 
 ## #50 — `PREFIX` command (LSM only)
 

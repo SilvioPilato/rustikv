@@ -30,6 +30,8 @@ pub trait StorageEngine: Send + Sync {
 pub trait RangeScan {
     fn range(&self, start: &str, end: &str) -> io::Result<Vec<(String, String)>>;
     fn prefix(&self, prefix: &str) -> io::Result<Vec<(String, String)>>;
+    fn count_prefix(&self, prefix: &str) -> io::Result<usize>;
+    fn count_range(&self, start: &str, end: &str) -> io::Result<usize>;
 }
 
 pub enum TtlOutcome {

@@ -96,6 +96,16 @@ pub fn parse_command(line: &str) -> ParseResult {
                 ParseResult::InvalidInput("Usage: PREFIX <prefix>".to_string())
             }
         }
+        "COUNT" => match words.len() {
+            2 => ParseResult::Cmd(Command::CountPrefix(words[1].to_string())),
+            3 => ParseResult::Cmd(Command::CountRange(
+                words[1].to_string(),
+                words[2].to_string(),
+            )),
+            _ => {
+                ParseResult::InvalidInput("Usage: COUNT <prefix> | COUNT <start> <end>".to_string())
+            }
+        },
         "TTL" => {
             if words.len() == 3 {
                 match words[2].parse::<u32>() {

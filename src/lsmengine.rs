@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::{
     any::Any,
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     io,
     path::PathBuf,
 };
@@ -651,5 +651,140 @@ impl RangeScan for LsmEngine {
         }
 
         Ok(b_map.into_iter().collect())
+    }
+
+    fn count_prefix(&self, prefix: &str) -> io::Result<usize> {
+        let now_ms = now_ms();
+        let mut set: BTreeSet<String> = BTreeSet::new();
+        let successor = prefix_successor(prefix);
+
+        {
+            let storage_strategy = self.shared.storage_strategy.read().unwrap();
+            let segments: Vec<&SSTable> = match successor.as_deref() {
+                Some(end) => storage_strategy.iter_files_for_range(prefix, end).collect(),
+                None => storage_strategy.iter_all().collect(),
+            };
+            for segment in segments {
+                for result in segment.iter()? {
+                    let record = result?;
+                    if !record.key.starts_with(prefix) {
+                        continue; // Inv 1
+                    }
+                    if let Some(expiry_ms) = record.header.expiry_ms
+                        && is_expired(expiry_ms, now_ms)
+                    {
+                        set.remove(&record.key);
+                        continue;
+                    }
+                    if record.header.is_tombstone() {
+                        set.remove(&record.key);
+                        continue;
+                    }
+                    set.insert(record.key);
+                }
+            }
+        }
+
+        {
+            let immutable = self.shared.immutable.read().unwrap();
+            if let Some(memtable) = immutable.as_ref() {
+                for (k, entry) in memtable
+                    .entries()
+                    .range::<str, _>((Included(prefix), Unbounded))
+                {
+                    if !k.starts_with(prefix) {
+                        break;
+                    }
+                    match (entry.value.as_deref(), entry.expiry_ms) {
+                        (Some(_), Some(ms)) if is_expired(ms, now_ms) => set.remove(k),
+                        (Some(_), _) => set.insert(k.clone()),
+                        (None, _) => set.remove(k),
+                    };
+                }
+            }
+        }
+
+        {
+            let memtable = self.shared.active.read().unwrap();
+            for (k, entry) in memtable
+                .entries()
+                .range::<str, _>((Included(prefix), Unbounded))
+            {
+                if !k.starts_with(prefix) {
+                    break;
+                }
+                match (entry.value.as_deref(), entry.expiry_ms) {
+                    (Some(_), Some(ms)) if is_expired(ms, now_ms) => set.remove(k),
+                    (Some(_), _) => set.insert(k.clone()),
+                    (None, _) => set.remove(k),
+                };
+            }
+        }
+
+        Ok(set.len())
+    }
+
+    fn count_range(&self, start: &str, end: &str) -> io::Result<usize> {
+        if start > end {
+            return Ok(0);
+        }
+
+        let now_ms = now_ms();
+        let mut set: BTreeSet<String> = BTreeSet::new();
+
+        {
+            let storage_strategy = self.shared.storage_strategy.read().unwrap();
+            for segment in storage_strategy.iter_files_for_range(start, end) {
+                for result in segment.iter()? {
+                    let record = result?;
+                    if record.key.as_str() < start || record.key.as_str() > end {
+                        continue;
+                    }
+                    if let Some(expiry_ms) = record.header.expiry_ms
+                        && is_expired(expiry_ms, now_ms)
+                    {
+                        set.remove(&record.key);
+                        continue;
+                    }
+                    if record.header.is_tombstone() {
+                        set.remove(&record.key);
+                        continue;
+                    }
+                    set.insert(record.key);
+                }
+            }
+        }
+
+        {
+            let immutable = self.shared.immutable.read().unwrap();
+            if let Some(memtable) = immutable.as_ref() {
+                for (k, entry) in memtable
+                    .entries()
+                    .range::<str, _>((Included(start), Included(end)))
+                {
+                    match (entry.value.as_deref(), entry.expiry_ms) {
+                        (Some(_), Some(ms)) if is_expired(ms, now_ms) => set.remove(k),
+                        (Some(_), _) => set.insert(k.clone()),
+                        (None, _) => set.remove(k),
+                    };
+                }
+            }
+        }
+
+        {
+            let memtable = self.shared.active.read().unwrap();
+            for (k, entry) in memtable
+                .entries()
+                .range::<str, _>((Included(start), Included(end)))
+            {
+                match (entry.value.as_deref(), entry.expiry_ms) {
+                    (Some(_), Some(ms)) if is_expired(ms, now_ms) => set.remove(k),
+                    (Some(_), _) => set.insert(k.clone()),
+                    (None, _) => set.remove(k),
+                };
+            }
+        }
+
+        Ok(set.len())
     }
 }

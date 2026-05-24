@@ -265,6 +265,44 @@ pub fn dispatch(
                 ),
             }
         }
+        Command::CountPrefix(prefix) => {
+            log_verbose(format!(
+                "Parsed COUNT <prefix> command: prefix='{}'",
+                prefix
+            ));
+            match database.as_any().downcast_ref::<LsmEngine>() {
+                Some(lsm) => match lsm.count_prefix(&prefix) {
+                    Ok(count) => {
+                        stats.reads.fetch_add(1, Ordering::Relaxed);
+                        encode_frame(ResponseStatus::Ok, &[count.to_string()])
+                    }
+                    Err(error) => encode_frame(ResponseStatus::Error, &[error.to_string()]),
+                },
+                None => encode_frame(
+                    ResponseStatus::Error,
+                    &["COUNT not supported by KV engine".to_string()],
+                ),
+            }
+        }
+        Command::CountRange(start, end) => {
+            log_verbose(format!(
+                "Parsed COUNT <start> <end> command: start='{}' end='{}'",
+                start, end
+            ));
+            match database.as_any().downcast_ref::<LsmEngine>() {
+                Some(lsm) => match lsm.count_range(&start, &end) {
+                    Ok(count) => {
+                        stats.reads.fetch_add(1, Ordering::Relaxed);
+                        encode_frame(ResponseStatus::Ok, &[count.to_string()])
+                    }
+                    Err(error) => encode_frame(ResponseStatus::Error, &[error.to_string()]),
+                },
+                None => encode_frame(
+                    ResponseStatus::Error,
+                    &["COUNT not supported by KV engine".to_string()],
+                ),
+            }
+        }
     }
 }
 
