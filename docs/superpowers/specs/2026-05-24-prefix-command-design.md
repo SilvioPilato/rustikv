@@ -69,6 +69,58 @@ knowing exact key bounds.
   result `(k, v)` pairs into the response payload, bump `stats.reads` by the
   pair count, and return the KV-not-supported error on the `None` branch.
 
+## Invariants
+
+These are the properties the implementation must preserve; the test suite below
+exists to pin each one.
+
+1. **`starts_with` is the sole source of truth for membership.** A pair `(k, v)`
+   appears in the result if and only if `k.starts_with(prefix)` *and* `k` is live
+   (not tombstoned, not expired) under the merge. No optimization may add or drop
+   a key relative to this definition.
+
+2. **Pruning is sound and never changes the result set.** Skipping an SSTable via
+   `iter_files_for_range(prefix, successor)` is purely a performance hint. A
+   segment with key range `[min, max]` may be skipped only when it provably
+   contains no matching key — i.e. `max < prefix` or `min >= successor`. Because
+   every matching key `m` satisfies `prefix <= m < successor`, any skipped
+   segment cannot hold an `m`. Equivalently: running PREFIX with pruning disabled
+   (scan every segment, filter by `starts_with`) must yield byte-identical
+   results.
+
+3. **`successor(prefix)` is the least string strictly greater than every string
+   that starts with `prefix`.** Computed by incrementing the last UTF-8 scalar of
+   `prefix` (skipping the surrogate gap `U+D800..=U+DFFF` — `char::from_u32`
+   returns `None` there); if the last scalar is `char::MAX`, drop it and increment
+   the preceding scalar, recursively. If `prefix` is empty or consists entirely of
+   `char::MAX`, **no finite successor exists** → use the unbounded upper sentinel
+   so every segment is considered. Property: for all `k`, `k.starts_with(prefix)`
+   ⇒ `prefix <= k < successor` (when a finite successor exists).
+
+4. **Newest write wins across the three tiers.** For any key, the value reflects
+   the most recent write in precedence order: active memtable > immutable memtable
+   > newer SSTable > older SSTable. A tombstone or expired record in a
+   higher-precedence tier shadows a live value in a lower one (the key is absent
+   from the result), exactly as in `range`.
+
+5. **Each key appears at most once.** The merge accumulates into a `BTreeMap`
+   keyed by key, so the result contains no duplicates regardless of how many
+   tiers/segments hold the key.
+
+6. **Output is sorted ascending by key**, inherited from the `BTreeMap` merge —
+   same guarantee `range` already provides.
+
+7. **Expiry is evaluated against a single `now_ms` captured once per call**, so a
+   key cannot appear live in one tier and expired in another within the same
+   PREFIX call.
+
+8. **PREFIX is read-only.** It takes only read locks and never mutates engine
+   state, segments, or memtables.
+
+9. **Empty prefix degenerates cleanly to "all live keys."** Invariants 1–8 hold
+   unchanged: every key `starts_with("")`, no finite successor exists so all
+   segments are scanned, and the result is every live key in sorted order.
+
 ## Tests — `tests/`
 Mirroring the range test suites:
 - `lsm_prefix` (engine-level): basic matches; non-matching keys excluded;
@@ -77,6 +129,17 @@ Mirroring the range test suites:
   keys**; no-match returns empty; a prefix equal to a full key matches that key;
   prefix that is a strict substring boundary (e.g. prefix `cpu:` should not
   match `cpuz`... — verify `starts_with` semantics, not `<=` range semantics).
+  A prefix one char shorter/longer than stored keys; multi-segment spread of
+  matching keys (forces the merge across several SSTables).
+- **Pruning soundness (invariant 2):** a differential test that builds an engine
+  with matching keys scattered across multiple SSTables and asserts the result is
+  identical whether or not segment pruning skipped any file — e.g. by comparing
+  `prefix(p)` against a brute-force `list_keys().filter(starts_with).get(...)`
+  reference over the same live set.
+- **Successor edge cases (invariant 3):** prefix ending in `char::MAX`; prefix
+  whose last scalar borders the surrogate gap (`U+D7FF` → must step to `U+E000`);
+  multi-byte UTF-8 prefix (e.g. `"é"`, emoji); all-`char::MAX` prefix and empty
+  prefix both fall back to the unbounded sentinel and return all matching keys.
 - `prefix_command` (end-to-end over BFFP framing).
 - cli parse tests for the `PREFIX` arm (correct arity, wrong arity).
 - KV engine returns the not-supported error.
