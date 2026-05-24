@@ -19,15 +19,43 @@ fn temp_db_path(suffix: &str) -> String {
     path.to_string_lossy().to_string()
 }
 
-fn start_server(db_path: &str, max_connections: usize) -> std::process::Child {
-    ProcessCommand::new(env!("CARGO_BIN_EXE_rustikv"))
-        .arg(db_path)
-        .arg("--tcp")
-        .arg("0.0.0.0:0")
-        .arg("--max-connections")
-        .arg(max_connections.to_string())
-        .spawn()
-        .expect("failed to start server")
+/// RAII guard: ensures the spawned server child is killed and reaped even if a
+/// test panics before reaching its explicit cleanup. Without this, a panic
+/// leaves an orphaned rustikv process that holds the port and keeps the test's
+/// stdout/stderr open, hanging any shell command that waits for EOF.
+struct ChildGuard(std::process::Child);
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+impl std::ops::Deref for ChildGuard {
+    type Target = std::process::Child;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for ChildGuard {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+fn start_server(db_path: &str, max_connections: usize) -> ChildGuard {
+    ChildGuard(
+        ProcessCommand::new(env!("CARGO_BIN_EXE_rustikv"))
+            .arg(db_path)
+            .arg("--tcp")
+            .arg("0.0.0.0:0")
+            .arg("--max-connections")
+            .arg(max_connections.to_string())
+            .spawn()
+            .expect("failed to start server"),
+    )
 }
 
 fn read_server_addr(db_path: &str) -> String {

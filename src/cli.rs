@@ -45,6 +45,13 @@ pub fn parse_command(line: &str) -> ParseResult {
                 ParseResult::InvalidInput("Usage: EXISTS <key>".to_string())
             }
         }
+        "INCR" => {
+            if words.len() == 2 {
+                ParseResult::Cmd(Command::Incr(words[1].to_string()))
+            } else {
+                ParseResult::InvalidInput("Usage: INCR <key>".to_string())
+            }
+        }
         "COMPACT" => ParseResult::Cmd(Command::Compact),
         "STATS" => ParseResult::Cmd(Command::Stats),
         "LIST" => ParseResult::Cmd(Command::List),
@@ -237,6 +244,22 @@ mod tests {
     #[test]
     fn ttl_rejects_non_numeric() {
         assert!(is_invalid("TTL k abc"));
+    }
+
+    // --- INCR ---
+
+    #[test]
+    fn incr_happy() {
+        match cmd("INCR counter") {
+            Command::Incr(key) => assert_eq!(key, "counter"),
+            _ => panic!("expected Command::Incr"),
+        }
+    }
+
+    #[test]
+    fn incr_rejects_wrong_arity() {
+        assert!(is_invalid("INCR"));
+        assert!(is_invalid("INCR k extra"));
     }
 
     // --- MWRITETTL ---

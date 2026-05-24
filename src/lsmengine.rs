@@ -28,11 +28,11 @@ pub(crate) fn lookup(
     strategy: &dyn StorageStrategy,
     key: &str,
     now_ms: u64,
-) -> io::Result<Option<String>> {
+) -> io::Result<Option<(String, Option<u64>)>> {
     if let Some(entry) = active.entry(key) {
         return match (entry.value.as_deref(), entry.expiry_ms) {
             (Some(_), Some(ms)) if is_expired(ms, now_ms) => Ok(None),
-            (Some(v), _) => Ok(Some(v.to_string())),
+            (Some(v), exp) => Ok(Some((v.to_string(), exp))),
             (None, _) => Ok(None),
         };
     }
@@ -42,14 +42,14 @@ pub(crate) fn lookup(
     {
         return match (entry.value.as_deref(), entry.expiry_ms) {
             (Some(_), Some(ms)) if is_expired(ms, now_ms) => Ok(None),
-            (Some(v), _) => Ok(Some(v.to_string())),
+            (Some(v), exp) => Ok(Some((v.to_string(), exp))),
             (None, _) => Ok(None),
         };
     }
 
     for segment in strategy.iter_for_key(key) {
         match segment.get(key)? {
-            Some(Some(v)) => return Ok(Some(v)),
+            Some(Some((v, exp))) => return Ok(Some((v, exp))),
             Some(None) => return Ok(None),
             None => continue,
         }
@@ -224,7 +224,7 @@ impl StorageEngine for LsmEngine {
         let immutable = self.shared.immutable.read().unwrap();
         let strategy = self.shared.storage_strategy.read().unwrap();
         match lookup(&active, immutable.as_ref(), strategy.as_ref(), key, now)? {
-            Some(v) => Ok(Some((key.to_string(), v))),
+            Some((v, _)) => Ok(Some((key.to_string(), v))),
             None => Ok(None),
         }
     }
@@ -429,7 +429,7 @@ impl StorageEngine for LsmEngine {
             let strategy = self.shared.storage_strategy.read().unwrap();
 
             match lookup(&active, immutable.as_ref(), strategy.as_ref(), key, now)? {
-                Some(v) => {
+                Some((v, _)) => {
                     let sz = apply_write(&mut wal, &mut active, key, Some(&v), expiry_ms)?;
                     (true, Some(sz))
                 }
@@ -471,6 +471,45 @@ impl StorageEngine for LsmEngine {
         }
 
         Ok(())
+    }
+
+    fn incr(&self, key: &str) -> io::Result<i64> {
+        let now = now_ms();
+        let (memtable_size, value) = {
+            let mut wal = self.shared.wal.lock().unwrap();
+            let mut active = self.shared.active.write().unwrap();
+            let immutable = self.shared.immutable.read().unwrap();
+            let strategy = self.shared.storage_strategy.read().unwrap();
+            let (mut value, expiry_ms): (i64, Option<u64>) =
+                match lookup(&active, immutable.as_ref(), strategy.as_ref(), key, now)? {
+                    Some((v, ttl)) => (
+                        v.parse::<i64>()
+                            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
+                        ttl,
+                    ),
+                    None => (0i64, None),
+                };
+            value = value.checked_add(1).ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "increment would overflow")
+            })?;
+
+            (
+                apply_write(
+                    &mut wal,
+                    &mut active,
+                    key,
+                    Some(&value.to_string()),
+                    expiry_ms,
+                )?,
+                value,
+            )
+        };
+
+        if memtable_size >= self.shared.max_memtable_bytes.load(Relaxed) {
+            self.flush_memtable_async()?;
+        }
+
+        Ok(value)
     }
 }
 

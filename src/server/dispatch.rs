@@ -233,6 +233,17 @@ pub fn dispatch(
                 Err(error) => encode_frame(ResponseStatus::Error, &[error.to_string()]),
             }
         }
+        Command::Incr(key) => {
+            log_verbose(format!("Parsed INCR command: key='{}'", key));
+            match database.incr(&key) {
+                Ok(value) => {
+                    stats.writes.fetch_add(1, Ordering::Relaxed);
+                    maybe_trigger_compaction(database.clone(), stats, cfg);
+                    encode_frame(ResponseStatus::Ok, &[value.to_string()])
+                }
+                Err(error) => encode_frame(ResponseStatus::Error, &[error.to_string()]),
+            }
+        }
     }
 }
 

@@ -16,6 +16,12 @@ use crate::{
 const BLOOM_BITS_PER_KEY: usize = 10;
 const BLOOM_HASH_COUNT: u32 = 7;
 
+/// Result of probing one segment for a key:
+/// - `None` — key not present in this segment (keep scanning older segments)
+/// - `Some(None)` — present but dead (tombstone or expired)
+/// - `Some(Some((value, expiry_ms)))` — live value and its surviving expiry
+pub type SegmentProbe = Option<Option<(String, Option<u64>)>>;
+
 pub struct SSTable {
     pub path: PathBuf,
     pub timestamp: u64, // for ordering segments newest-to-oldest
@@ -182,7 +188,7 @@ impl SSTable {
     }
 
     /// Scan the file for a key, return the value (or None/tombstone)
-    pub fn get(&self, key: &str) -> io::Result<Option<Option<String>>> {
+    pub fn get(&self, key: &str) -> io::Result<SegmentProbe> {
         if !self.bloom.might_contain(key) {
             return Ok(None);
         }
@@ -211,7 +217,7 @@ impl SSTable {
                     {
                         None
                     } else {
-                        Some(record.value)
+                        Some((record.value, record.header.expiry_ms))
                     };
                     return Ok(Some(value));
                 }

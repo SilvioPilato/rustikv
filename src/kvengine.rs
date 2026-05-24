@@ -51,7 +51,7 @@ pub(crate) fn kv_lookup(
     active_segment: &Segment,
     key: &str,
     now_ms: u64,
-) -> io::Result<Option<String>> {
+) -> io::Result<Option<(String, Option<u64>)>> {
     let entry = match index.get(key) {
         Some(e) => e,
         None => return Ok(None),
@@ -71,7 +71,7 @@ pub(crate) fn kv_lookup(
     };
     file.seek(SeekFrom::Start(entry.offset))?;
     let record = Record::read_next(&mut file)?;
-    Ok(Some(record.value))
+    Ok(Some((record.value, entry.expiry_ms)))
 }
 
 /// Lock-free segment roll. Operates on already-held guard state and the
@@ -517,7 +517,7 @@ impl StorageEngine for KVEngine {
             key,
             now,
         )? {
-            Some(value) => Ok(Some((key.to_string(), value))),
+            Some((value, _)) => Ok(Some((key.to_string(), value))),
             None => Ok(None),
         }
     }
@@ -710,7 +710,7 @@ impl StorageEngine for KVEngine {
                 now,
             )? {
                 None => None,
-                Some(value) => Some(kv_append(
+                Some((value, _)) => Some(kv_append(
                     &mut wal,
                     &mut active_file,
                     &mut active_segment,
@@ -789,5 +789,56 @@ impl StorageEngine for KVEngine {
         }
 
         Ok(())
+    }
+
+    fn incr(&self, key: &str) -> io::Result<i64> {
+        let now = now_ms();
+        let (value, new_size, replaced) = {
+            let mut wal = self.wal.lock().unwrap();
+            let mut active_file = self.active_file.lock().unwrap();
+            let mut active_segment = self.active_segment.lock().unwrap();
+            let mut index = self.index.write().unwrap();
+            let (current, expiry_ms) = match kv_lookup(
+                &index,
+                &self.db_path,
+                &self.db_name,
+                &active_segment,
+                key,
+                now,
+            )? {
+                Some((v, ttl)) => (
+                    v.parse::<i64>()
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
+                    ttl,
+                ),
+                None => (0, None),
+            };
+            let next = current.checked_add(1).ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "increment would overflow")
+            })?;
+            let (new_size, replaced) = kv_append(
+                &mut wal,
+                &mut active_file,
+                &mut active_segment,
+                &mut index,
+                &self.db_path,
+                &self.db_name,
+                self.max_segment_bytes.load(Relaxed),
+                self.fsync_strategy,
+                &self.segment_count,
+                key,
+                &next.to_string(),
+                expiry_ms,
+            )?;
+            (next, new_size, replaced)
+        };
+
+        if let Some(old_size) = replaced {
+            self.dead_bytes.fetch_add(old_size, Relaxed);
+        }
+        self.total_bytes.fetch_add(new_size, Relaxed);
+        self.fsync()?;
+
+        Ok(value)
     }
 }

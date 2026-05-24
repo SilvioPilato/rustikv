@@ -27,8 +27,8 @@ fn flush_and_get() {
     let mt = make_memtable(&[("k1", "v1"), ("k2", "v2")]);
     let sst = SSTable::from_memtable(&dir, "test", &mt, None, 4096, true).unwrap();
 
-    assert_eq!(sst.get("k1").unwrap(), Some(Some("v1".to_string())));
-    assert_eq!(sst.get("k2").unwrap(), Some(Some("v2".to_string())));
+    assert_eq!(sst.get("k1").unwrap(), Some(Some(("v1".to_string(), None))));
+    assert_eq!(sst.get("k2").unwrap(), Some(Some(("v2".to_string(), None))));
 }
 
 #[test]
@@ -49,7 +49,10 @@ fn get_returns_tombstone() {
     mt.remove("dead".to_string());
     let sst = SSTable::from_memtable(&dir, "test", &mt, None, 4096, true).unwrap();
 
-    assert_eq!(sst.get("alive").unwrap(), Some(Some("yes".to_string())));
+    assert_eq!(
+        sst.get("alive").unwrap(),
+        Some(Some(("yes".to_string(), None)))
+    );
     assert_eq!(sst.get("dead").unwrap(), Some(None)); // tombstone
 }
 
