@@ -303,17 +303,118 @@ pub fn dispatch(
                 ),
             }
         }
-        Command::SumPrefix(_)
-        | Command::SumRange(_, _)
-        | Command::AvgPrefix(_)
-        | Command::AvgRange(_, _)
-        | Command::MinPrefix(_)
-        | Command::MinRange(_, _)
-        | Command::MaxPrefix(_)
-        | Command::MaxRange(_, _) => encode_frame(
-            ResponseStatus::Error,
-            &["aggregation commands not yet implemented".to_string()],
-        ),
+        Command::SumPrefix(prefix) => match database.as_any().downcast_ref::<LsmEngine>() {
+            Some(lsm) => match lsm.sum_prefix(&prefix) {
+                Ok(Some(v)) => {
+                    stats.reads.fetch_add(1, Ordering::Relaxed);
+                    encode_frame(ResponseStatus::Ok, &[format!("{:?}", v)])
+                }
+                Ok(None) => encode_frame(ResponseStatus::NotFound, &[]),
+                Err(e) => encode_frame(ResponseStatus::Error, &[e.to_string()]),
+            },
+            None => encode_frame(
+                ResponseStatus::Error,
+                &["SUM not supported by KV engine".to_string()],
+            ),
+        },
+        Command::SumRange(start, end) => match database.as_any().downcast_ref::<LsmEngine>() {
+            Some(lsm) => match lsm.sum_range(&start, &end) {
+                Ok(Some(v)) => {
+                    stats.reads.fetch_add(1, Ordering::Relaxed);
+                    encode_frame(ResponseStatus::Ok, &[format!("{:?}", v)])
+                }
+                Ok(None) => encode_frame(ResponseStatus::NotFound, &[]),
+                Err(e) => encode_frame(ResponseStatus::Error, &[e.to_string()]),
+            },
+            None => encode_frame(
+                ResponseStatus::Error,
+                &["SUM not supported by KV engine".to_string()],
+            ),
+        },
+        Command::AvgPrefix(prefix) => match database.as_any().downcast_ref::<LsmEngine>() {
+            Some(lsm) => match lsm.avg_prefix(&prefix) {
+                Ok(Some(v)) => {
+                    stats.reads.fetch_add(1, Ordering::Relaxed);
+                    encode_frame(ResponseStatus::Ok, &[format!("{:?}", v)])
+                }
+                Ok(None) => encode_frame(ResponseStatus::NotFound, &[]),
+                Err(e) => encode_frame(ResponseStatus::Error, &[e.to_string()]),
+            },
+            None => encode_frame(
+                ResponseStatus::Error,
+                &["AVG not supported by KV engine".to_string()],
+            ),
+        },
+        Command::AvgRange(start, end) => match database.as_any().downcast_ref::<LsmEngine>() {
+            Some(lsm) => match lsm.avg_range(&start, &end) {
+                Ok(Some(v)) => {
+                    stats.reads.fetch_add(1, Ordering::Relaxed);
+                    encode_frame(ResponseStatus::Ok, &[format!("{:?}", v)])
+                }
+                Ok(None) => encode_frame(ResponseStatus::NotFound, &[]),
+                Err(e) => encode_frame(ResponseStatus::Error, &[e.to_string()]),
+            },
+            None => encode_frame(
+                ResponseStatus::Error,
+                &["AVG not supported by KV engine".to_string()],
+            ),
+        },
+        Command::MinPrefix(prefix) => match database.as_any().downcast_ref::<LsmEngine>() {
+            Some(lsm) => match lsm.min_prefix(&prefix) {
+                Ok(Some(v)) => {
+                    stats.reads.fetch_add(1, Ordering::Relaxed);
+                    encode_frame(ResponseStatus::Ok, &[format!("{:?}", v)])
+                }
+                Ok(None) => encode_frame(ResponseStatus::NotFound, &[]),
+                Err(e) => encode_frame(ResponseStatus::Error, &[e.to_string()]),
+            },
+            None => encode_frame(
+                ResponseStatus::Error,
+                &["MIN not supported by KV engine".to_string()],
+            ),
+        },
+        Command::MinRange(start, end) => match database.as_any().downcast_ref::<LsmEngine>() {
+            Some(lsm) => match lsm.min_range(&start, &end) {
+                Ok(Some(v)) => {
+                    stats.reads.fetch_add(1, Ordering::Relaxed);
+                    encode_frame(ResponseStatus::Ok, &[format!("{:?}", v)])
+                }
+                Ok(None) => encode_frame(ResponseStatus::NotFound, &[]),
+                Err(e) => encode_frame(ResponseStatus::Error, &[e.to_string()]),
+            },
+            None => encode_frame(
+                ResponseStatus::Error,
+                &["MIN not supported by KV engine".to_string()],
+            ),
+        },
+        Command::MaxPrefix(prefix) => match database.as_any().downcast_ref::<LsmEngine>() {
+            Some(lsm) => match lsm.max_prefix(&prefix) {
+                Ok(Some(v)) => {
+                    stats.reads.fetch_add(1, Ordering::Relaxed);
+                    encode_frame(ResponseStatus::Ok, &[format!("{:?}", v)])
+                }
+                Ok(None) => encode_frame(ResponseStatus::NotFound, &[]),
+                Err(e) => encode_frame(ResponseStatus::Error, &[e.to_string()]),
+            },
+            None => encode_frame(
+                ResponseStatus::Error,
+                &["MAX not supported by KV engine".to_string()],
+            ),
+        },
+        Command::MaxRange(start, end) => match database.as_any().downcast_ref::<LsmEngine>() {
+            Some(lsm) => match lsm.max_range(&start, &end) {
+                Ok(Some(v)) => {
+                    stats.reads.fetch_add(1, Ordering::Relaxed);
+                    encode_frame(ResponseStatus::Ok, &[format!("{:?}", v)])
+                }
+                Ok(None) => encode_frame(ResponseStatus::NotFound, &[]),
+                Err(e) => encode_frame(ResponseStatus::Error, &[e.to_string()]),
+            },
+            None => encode_frame(
+                ResponseStatus::Error,
+                &["MAX not supported by KV engine".to_string()],
+            ),
+        },
     }
 }
 
