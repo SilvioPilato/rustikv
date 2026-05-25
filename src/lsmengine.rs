@@ -844,41 +844,50 @@ impl RangeScan for LsmEngine {
 
     fn min_prefix(&self, prefix: &str) -> io::Result<Option<f64>> {
         let pairs = self.prefix(prefix)?;
-        let nums = resolve_numeric("MIN", pairs)?;
-        if nums.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(nums.iter().fold(f64::INFINITY, |acc, &x| acc.min(x))))
+        Ok(fold_min(&resolve_numeric("MIN", pairs)?))
     }
 
     fn min_range(&self, start: &str, end: &str) -> io::Result<Option<f64>> {
         let pairs = self.range(start, end)?;
-        let nums = resolve_numeric("MIN", pairs)?;
-        if nums.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(nums.iter().fold(f64::INFINITY, |acc, &x| acc.min(x))))
+        Ok(fold_min(&resolve_numeric("MIN", pairs)?))
     }
 
     fn max_prefix(&self, prefix: &str) -> io::Result<Option<f64>> {
         let pairs = self.prefix(prefix)?;
-        let nums = resolve_numeric("MAX", pairs)?;
-        if nums.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(
-            nums.iter().fold(f64::NEG_INFINITY, |acc, &x| acc.max(x)),
-        ))
+        Ok(fold_max(&resolve_numeric("MAX", pairs)?))
     }
 
     fn max_range(&self, start: &str, end: &str) -> io::Result<Option<f64>> {
         let pairs = self.range(start, end)?;
-        let nums = resolve_numeric("MAX", pairs)?;
-        if nums.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(
-            nums.iter().fold(f64::NEG_INFINITY, |acc, &x| acc.max(x)),
-        ))
+        Ok(fold_max(&resolve_numeric("MAX", pairs)?))
     }
+}
+
+/// Minimum of `nums`, or `None` if empty. Seeds from the first value (not an
+/// `INFINITY` sentinel) and propagates NaN, so the result agrees with SUM/AVG
+/// when a non-finite value is present and never leaks the seed on an all-NaN set.
+fn fold_min(nums: &[f64]) -> Option<f64> {
+    let mut it = nums.iter().copied();
+    let first = it.next()?;
+    Some(it.fold(first, |acc, x| {
+        if acc.is_nan() || x.is_nan() {
+            f64::NAN
+        } else {
+            acc.min(x)
+        }
+    }))
+}
+
+/// Maximum of `nums`, or `None` if empty. See [`fold_min`] for the seeding and
+/// NaN-propagation rationale.
+fn fold_max(nums: &[f64]) -> Option<f64> {
+    let mut it = nums.iter().copied();
+    let first = it.next()?;
+    Some(it.fold(first, |acc, x| {
+        if acc.is_nan() || x.is_nan() {
+            f64::NAN
+        } else {
+            acc.max(x)
+        }
+    }))
 }

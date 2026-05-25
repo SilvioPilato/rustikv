@@ -39,7 +39,12 @@ The KV engine returns a not-supported error for all 8 op codes, exactly as
 - **Result format**: `format!("{:?}", value)` — always includes the decimal point
   (`"1.0"`, `"1.5"`), consistent with the `f64` type. Non-finite results
   (`"inf"`, `"-inf"`, `"NaN"`) are not explicitly forbidden; they arise naturally
-  if all matching values parse to `f64::INFINITY` etc. and are returned as-is.
+  if matching values parse to `f64::INFINITY`/`NaN` etc. and are returned as-is.
+  All four reductions treat NaN uniformly: a NaN among the inputs propagates to a
+  NaN result. SUM/AVG get this for free from arithmetic; MIN/MAX must seed from
+  the first value and propagate NaN explicitly rather than using IEEE `min`/`max`
+  semantics (which would silently drop NaN and, on an all-NaN set, leak the fold
+  seed as the result).
 - **`stats.reads`** is bumped by 1 per call, same as COUNT.
 
 ## Layers
@@ -120,8 +125,10 @@ Each of the 8 `RangeScan` impl methods:
 4. Otherwise computes and returns `Ok(Some(result))`:
    - `SUM`: `nums.iter().sum()`
    - `AVG`: `let s: f64 = nums.iter().sum(); Ok(Some(s / nums.len() as f64))`
-   - `MIN`: `nums.iter().fold(f64::INFINITY, |acc, &x| acc.min(x))`
-   - `MAX`: `nums.iter().fold(f64::NEG_INFINITY, |acc, &x| acc.max(x))`
+   - `MIN`/`MAX`: via `fold_min`/`fold_max` free functions that seed from the
+     first value and propagate NaN (`if acc.is_nan() || x.is_nan() { f64::NAN }
+     else { acc.min(x) }`), returning `Option<f64>` so empty → `None` without an
+     `INFINITY` sentinel.
 
 ### Dispatch — `src/server/dispatch.rs`
 
