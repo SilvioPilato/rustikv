@@ -174,6 +174,14 @@ The server uses a **binary length-prefixed protocol** (not plain text). Each req
 | `PREFIX <prefix>` | 14 | **LSM only.** Returns all live key-value pairs whose keys start with `<prefix>`, in sorted order. Response is a flat list of `key, value` pairs. Empty prefix returns all live keys. Returns an error on the KV engine |
 | `COUNT <prefix>` | 15 | **LSM only.** Returns the number of live keys starting with `<prefix>`. Empty prefix counts all live keys. Returns a single integer. Returns an error on the KV engine |
 | `COUNT <start> <end>` | 16 | **LSM only.** Returns the number of live keys in the inclusive range `[start, end]`. Returns 0 if `start > end`. Returns a single integer. Returns an error on the KV engine |
+| `SUM <prefix>` | 17 | **LSM only.** Returns the sum of live numeric values whose keys start with `<prefix>`. Returns a single float. Empty match returns "Not found". Non-numeric live value returns an error. Returns an error on the KV engine |
+| `SUM <start> <end>` | 18 | **LSM only.** Returns the sum of live numeric values in the inclusive range `[start, end]`. Returns "Not found" if no keys match or `start > end`. Returns an error on the KV engine |
+| `AVG <prefix>` | 19 | **LSM only.** Returns the average of live numeric values whose keys start with `<prefix>`. Returns "Not found" on empty match. Returns an error on the KV engine |
+| `AVG <start> <end>` | 20 | **LSM only.** Returns the average of live numeric values in the inclusive range `[start, end]`. Returns "Not found" if no keys match or `start > end`. Returns an error on the KV engine |
+| `MIN <prefix>` | 21 | **LSM only.** Returns the minimum of live numeric values whose keys start with `<prefix>`. Returns "Not found" on empty match. Returns an error on the KV engine |
+| `MIN <start> <end>` | 22 | **LSM only.** Returns the minimum of live numeric values in the inclusive range `[start, end]`. Returns "Not found" if no keys match or `start > end`. Returns an error on the KV engine |
+| `MAX <prefix>` | 23 | **LSM only.** Returns the maximum of live numeric values whose keys start with `<prefix>`. Returns "Not found" on empty match. Returns an error on the KV engine |
+| `MAX <start> <end>` | 24 | **LSM only.** Returns the maximum of live numeric values in the inclusive range `[start, end]`. Returns "Not found" if no keys match or `start > end`. Returns an error on the KV engine |
 
 ### STATS fields
 
