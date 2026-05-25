@@ -4,6 +4,10 @@ _None._
 
 # Open Tasks
 
+## #85 — Refresh telemetry experiment doc once aggregation lands
+
+`docs/telemetry-store-experiment.md` frames the telemetry use case and lists what's missing. With TTL/INCR/PREFIX/COUNT merged and aggregation (#84) the last gap, this doc is stale: it still files server-side aggregation under "What's missing and why it matters" (item 5) and COUNT under "nice to have". Once #84 merges, move aggregation (and COUNT) into the "How it fits telemetry today" table as shipped capabilities, update the "Suggested path" diagram to show the full path complete, and add concrete worked examples of the end-to-end telemetry flow now possible (e.g. timestamped-key writes via `MSET`, `RANGE`/`PREFIX` windowing, `COUNT` cardinality, `SUM`/`AVG`/`MIN`/`MAX` over a window). **Depends on #84 landing** — don't start until aggregation is merged, or the doc will claim capabilities that don't exist yet. Out of scope: changing any code; this is documentation only.
+
 ## #83 — Key-only LSM scan path to avoid value materialisation in COUNT
 
 `COUNT <prefix>` and `COUNT <start> <end>` use a `BTreeSet<String>` merge to avoid *storing* values in memory, but the underlying `iter_files_for_range` / `iter_all` SSTable iterators still deserialise full `Record` structs (key + value bytes + metadata) off disk on every scan. For large values this means significant unnecessary I/O and allocation — the value is read, then immediately dropped. The same applies to any future count-style command. Two approaches worth evaluating: (1) a **key-only index** — a secondary sorted on-disk structure (one entry per live key: key + offset + tombstone flag + expiry) that COUNT/PREFIX can iterate without touching the value segment; (2) **key-only SSTable frames** — a separate serialisation path that emits only key+metadata bytes alongside the existing full-record SSTable, letting key-range scans skip value reads entirely. Either approach requires changes to the compaction pipeline (to write the key-only structure) and to `RangeScan` (to expose a key-iterator path). Depends on #51 landing (defines the COUNT semantics that motivate this). Out of scope: changing the existing `RANGE`/`PREFIX` value-returning commands (they need values).
@@ -98,6 +102,18 @@ Extend the block-based SSTable format (from #29) with per-block integrity checks
 Comprehensive evaluation of optimization strategies for block-based compression (from #29). Implement and benchmark: (1) block-level decompression caching (LRU in-memory cache), (2) lazy decompression (only decompress blocks on key access), (3) parallel decompression for range scans (decompress multiple blocks concurrently), (4) SIMD optimization for LZ77 match-finding and copying, (5) prefetching for sequential reads. Measure latency, throughput, and memory overhead against baseline. Generate comparison report. Depends on #29. Low priority—exploratory task to understand real-world performance gains and tradeoffs.
 
 # Closed Tasks
+
+## #84 — Server-side aggregation: `SUM`/`AVG`/`MIN`/`MAX` (LSM only)
+
+Four LSM-only TCP commands — `SUM`, `AVG`, `MIN`, `MAX` — that reduce the live numeric values matching a query to a single scalar. Each command has two variants disambiguated by arity: `<CMD> <prefix>` (prefix scan) and `<CMD> <start> <end>` (inclusive range). Reuses the three-tier merge (SSTables → immutable memtable → active memtable, newest-wins, tombstone/expiry-aware) from `RANGE`/`PREFIX`/`COUNT`. Values are parsed as `f64`; any parse failure on a live value errors the whole query. Empty match or inverted range returns NotFound. Result formatted as `format!("{:?}", value)` (always includes decimal point). KV engine returns not-supported error for all 8 op codes. `stats.reads` bumped by 1 per call.
+
+Wired through BFFP (8 new op codes 17–24, 8 new `Command` variants), CLI (4 new arity-dispatch parse arms), `RangeScan` trait (8 new methods returning `Option<f64>`), `LsmEngine` impl (`resolve_numeric` private free function + 8 trait methods), and dispatch (8 new arms with downcast, `format!("{:?}", v)` formatting). New suites: `tests/lsm_aggregate.rs` (20 engine-level tests including tombstone/expiry shadowing, differential equivalence) and `tests/aggregate_command.rs` (42 tests: BFFP round-trips, CLI parse, dispatch, stats, KV-not-supported). Full suite passed / 0 failed.
+
+Spec: `docs/superpowers/specs/2026-05-24-aggregation-design.md`
+
+Plan: `docs/superpowers/plans/2026-05-24-aggregation-sum-avg-min-max.md`
+
+PR: TBD
 
 ## #51 — `COUNT` command (LSM only)
 
