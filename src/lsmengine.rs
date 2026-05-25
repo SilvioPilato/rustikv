@@ -513,6 +513,22 @@ impl StorageEngine for LsmEngine {
     }
 }
 
+fn resolve_numeric(op: &str, pairs: Vec<(String, String)>) -> io::Result<Vec<f64>> {
+    let mut nums = Vec::with_capacity(pairs.len());
+    for (k, v) in pairs {
+        match v.parse::<f64>() {
+            Ok(n) => nums.push(n),
+            Err(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("{op}: non-numeric value for key {k}"),
+                ));
+            }
+        }
+    }
+    Ok(nums)
+}
+
 impl RangeScan for LsmEngine {
     fn range(&self, start: &str, end: &str) -> io::Result<Vec<(String, String)>> {
         if start > end {
@@ -787,4 +803,91 @@ impl RangeScan for LsmEngine {
 
         Ok(set.len())
     }
+
+    fn sum_prefix(&self, prefix: &str) -> io::Result<Option<f64>> {
+        let pairs = self.prefix(prefix)?;
+        let nums = resolve_numeric("SUM", pairs)?;
+        if nums.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(nums.iter().sum()))
+    }
+
+    fn sum_range(&self, start: &str, end: &str) -> io::Result<Option<f64>> {
+        let pairs = self.range(start, end)?;
+        let nums = resolve_numeric("SUM", pairs)?;
+        if nums.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(nums.iter().sum()))
+    }
+
+    fn avg_prefix(&self, prefix: &str) -> io::Result<Option<f64>> {
+        let pairs = self.prefix(prefix)?;
+        let nums = resolve_numeric("AVG", pairs)?;
+        if nums.is_empty() {
+            return Ok(None);
+        }
+        let s: f64 = nums.iter().sum();
+        Ok(Some(s / nums.len() as f64))
+    }
+
+    fn avg_range(&self, start: &str, end: &str) -> io::Result<Option<f64>> {
+        let pairs = self.range(start, end)?;
+        let nums = resolve_numeric("AVG", pairs)?;
+        if nums.is_empty() {
+            return Ok(None);
+        }
+        let s: f64 = nums.iter().sum();
+        Ok(Some(s / nums.len() as f64))
+    }
+
+    fn min_prefix(&self, prefix: &str) -> io::Result<Option<f64>> {
+        let pairs = self.prefix(prefix)?;
+        Ok(fold_min(&resolve_numeric("MIN", pairs)?))
+    }
+
+    fn min_range(&self, start: &str, end: &str) -> io::Result<Option<f64>> {
+        let pairs = self.range(start, end)?;
+        Ok(fold_min(&resolve_numeric("MIN", pairs)?))
+    }
+
+    fn max_prefix(&self, prefix: &str) -> io::Result<Option<f64>> {
+        let pairs = self.prefix(prefix)?;
+        Ok(fold_max(&resolve_numeric("MAX", pairs)?))
+    }
+
+    fn max_range(&self, start: &str, end: &str) -> io::Result<Option<f64>> {
+        let pairs = self.range(start, end)?;
+        Ok(fold_max(&resolve_numeric("MAX", pairs)?))
+    }
+}
+
+/// Minimum of `nums`, or `None` if empty. Seeds from the first value (not an
+/// `INFINITY` sentinel) and propagates NaN, so the result agrees with SUM/AVG
+/// when a non-finite value is present and never leaks the seed on an all-NaN set.
+fn fold_min(nums: &[f64]) -> Option<f64> {
+    let mut it = nums.iter().copied();
+    let first = it.next()?;
+    Some(it.fold(first, |acc, x| {
+        if acc.is_nan() || x.is_nan() {
+            f64::NAN
+        } else {
+            acc.min(x)
+        }
+    }))
+}
+
+/// Maximum of `nums`, or `None` if empty. See [`fold_min`] for the seeding and
+/// NaN-propagation rationale.
+fn fold_max(nums: &[f64]) -> Option<f64> {
+    let mut it = nums.iter().copied();
+    let first = it.next()?;
+    Some(it.fold(first, |acc, x| {
+        if acc.is_nan() || x.is_nan() {
+            f64::NAN
+        } else {
+            acc.max(x)
+        }
+    }))
 }

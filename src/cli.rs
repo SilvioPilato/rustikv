@@ -106,6 +106,38 @@ pub fn parse_command(line: &str) -> ParseResult {
                 ParseResult::InvalidInput("Usage: COUNT <prefix> | COUNT <start> <end>".to_string())
             }
         },
+        "SUM" => match words.len() {
+            2 => ParseResult::Cmd(Command::SumPrefix(words[1].to_string())),
+            3 => ParseResult::Cmd(Command::SumRange(
+                words[1].to_string(),
+                words[2].to_string(),
+            )),
+            _ => ParseResult::InvalidInput("Usage: SUM <prefix> | SUM <start> <end>".to_string()),
+        },
+        "AVG" => match words.len() {
+            2 => ParseResult::Cmd(Command::AvgPrefix(words[1].to_string())),
+            3 => ParseResult::Cmd(Command::AvgRange(
+                words[1].to_string(),
+                words[2].to_string(),
+            )),
+            _ => ParseResult::InvalidInput("Usage: AVG <prefix> | AVG <start> <end>".to_string()),
+        },
+        "MIN" => match words.len() {
+            2 => ParseResult::Cmd(Command::MinPrefix(words[1].to_string())),
+            3 => ParseResult::Cmd(Command::MinRange(
+                words[1].to_string(),
+                words[2].to_string(),
+            )),
+            _ => ParseResult::InvalidInput("Usage: MIN <prefix> | MIN <start> <end>".to_string()),
+        },
+        "MAX" => match words.len() {
+            2 => ParseResult::Cmd(Command::MaxPrefix(words[1].to_string())),
+            3 => ParseResult::Cmd(Command::MaxRange(
+                words[1].to_string(),
+                words[2].to_string(),
+            )),
+            _ => ParseResult::InvalidInput("Usage: MAX <prefix> | MAX <start> <end>".to_string()),
+        },
         "TTL" => {
             if words.len() == 3 {
                 match words[2].parse::<u32>() {

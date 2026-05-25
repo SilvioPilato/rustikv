@@ -32,6 +32,14 @@ pub trait RangeScan {
     fn prefix(&self, prefix: &str) -> io::Result<Vec<(String, String)>>;
     fn count_prefix(&self, prefix: &str) -> io::Result<usize>;
     fn count_range(&self, start: &str, end: &str) -> io::Result<usize>;
+    fn sum_prefix(&self, prefix: &str) -> io::Result<Option<f64>>;
+    fn sum_range(&self, start: &str, end: &str) -> io::Result<Option<f64>>;
+    fn avg_prefix(&self, prefix: &str) -> io::Result<Option<f64>>;
+    fn avg_range(&self, start: &str, end: &str) -> io::Result<Option<f64>>;
+    fn min_prefix(&self, prefix: &str) -> io::Result<Option<f64>>;
+    fn min_range(&self, start: &str, end: &str) -> io::Result<Option<f64>>;
+    fn max_prefix(&self, prefix: &str) -> io::Result<Option<f64>>;
+    fn max_range(&self, start: &str, end: &str) -> io::Result<Option<f64>>;
 }
 
 pub enum TtlOutcome {

@@ -30,6 +30,14 @@ pub enum Command {
     Prefix(String),
     CountPrefix(String),
     CountRange(String, String),
+    SumPrefix(String),
+    SumRange(String, String),
+    AvgPrefix(String),
+    AvgRange(String, String),
+    MinPrefix(String),
+    MinRange(String, String),
+    MaxPrefix(String),
+    MaxRange(String, String),
 }
 
 #[repr(u8)]
@@ -50,6 +58,14 @@ pub enum OpCode {
     Prefix = 14,
     CountPrefix = 15,
     CountRange = 16,
+    SumPrefix = 17,
+    SumRange = 18,
+    AvgPrefix = 19,
+    AvgRange = 20,
+    MinPrefix = 21,
+    MinRange = 22,
+    MaxPrefix = 23,
+    MaxRange = 24,
 }
 
 impl TryFrom<u8> for OpCode {
@@ -73,6 +89,14 @@ impl TryFrom<u8> for OpCode {
             14 => Ok(OpCode::Prefix),
             15 => Ok(OpCode::CountPrefix),
             16 => Ok(OpCode::CountRange),
+            17 => Ok(OpCode::SumPrefix),
+            18 => Ok(OpCode::SumRange),
+            19 => Ok(OpCode::AvgPrefix),
+            20 => Ok(OpCode::AvgRange),
+            21 => Ok(OpCode::MinPrefix),
+            22 => Ok(OpCode::MinRange),
+            23 => Ok(OpCode::MaxPrefix),
+            24 => Ok(OpCode::MaxRange),
             n => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("unknown op code: {n}"),
@@ -183,6 +207,30 @@ pub fn decode_input_frame(buffer: &[u8]) -> io::Result<Command> {
             let start = read_key(&mut cur)?;
             let end = read_key(&mut cur)?;
             Ok(Command::CountRange(start, end))
+        }
+        Ok(OpCode::SumPrefix) => Ok(Command::SumPrefix(read_key(&mut cur)?)),
+        Ok(OpCode::SumRange) => {
+            let start = read_key(&mut cur)?;
+            let end = read_key(&mut cur)?;
+            Ok(Command::SumRange(start, end))
+        }
+        Ok(OpCode::AvgPrefix) => Ok(Command::AvgPrefix(read_key(&mut cur)?)),
+        Ok(OpCode::AvgRange) => {
+            let start = read_key(&mut cur)?;
+            let end = read_key(&mut cur)?;
+            Ok(Command::AvgRange(start, end))
+        }
+        Ok(OpCode::MinPrefix) => Ok(Command::MinPrefix(read_key(&mut cur)?)),
+        Ok(OpCode::MinRange) => {
+            let start = read_key(&mut cur)?;
+            let end = read_key(&mut cur)?;
+            Ok(Command::MinRange(start, end))
+        }
+        Ok(OpCode::MaxPrefix) => Ok(Command::MaxPrefix(read_key(&mut cur)?)),
+        Ok(OpCode::MaxRange) => {
+            let start = read_key(&mut cur)?;
+            let end = read_key(&mut cur)?;
+            Ok(Command::MaxRange(start, end))
         }
         Err(_) => Ok(Command::Invalid(op_buf[0])),
     }
@@ -473,6 +521,94 @@ pub fn encode_command(command: Command) -> Vec<u8> {
                 OP_CODE_SIZE as u32 + KEY_LEN_SIZE as u32 * 2 + start_len as u32 + end_len as u32;
             payload.write_all(&total_len.to_be_bytes()).unwrap();
             payload.write_all(&[OpCode::CountRange as u8]).unwrap();
+            payload.write_all(&start_len.to_be_bytes()).unwrap();
+            payload.write_all(start.as_bytes()).unwrap();
+            payload.write_all(&end_len.to_be_bytes()).unwrap();
+            payload.write_all(end.as_bytes()).unwrap();
+            payload.into_inner()
+        }
+        Command::SumPrefix(prefix) => {
+            let total_len = (OP_CODE_SIZE + KEY_LEN_SIZE + prefix.len()) as u32;
+            let key_len = prefix.len() as u16;
+            payload.write_all(&total_len.to_be_bytes()).unwrap();
+            payload.write_all(&[OpCode::SumPrefix as u8]).unwrap();
+            payload.write_all(&key_len.to_be_bytes()).unwrap();
+            payload.write_all(prefix.as_bytes()).unwrap();
+            payload.into_inner()
+        }
+        Command::SumRange(start, end) => {
+            let start_len = start.len() as u16;
+            let end_len = end.len() as u16;
+            let total_len =
+                OP_CODE_SIZE as u32 + KEY_LEN_SIZE as u32 * 2 + start_len as u32 + end_len as u32;
+            payload.write_all(&total_len.to_be_bytes()).unwrap();
+            payload.write_all(&[OpCode::SumRange as u8]).unwrap();
+            payload.write_all(&start_len.to_be_bytes()).unwrap();
+            payload.write_all(start.as_bytes()).unwrap();
+            payload.write_all(&end_len.to_be_bytes()).unwrap();
+            payload.write_all(end.as_bytes()).unwrap();
+            payload.into_inner()
+        }
+        Command::AvgPrefix(prefix) => {
+            let total_len = (OP_CODE_SIZE + KEY_LEN_SIZE + prefix.len()) as u32;
+            let key_len = prefix.len() as u16;
+            payload.write_all(&total_len.to_be_bytes()).unwrap();
+            payload.write_all(&[OpCode::AvgPrefix as u8]).unwrap();
+            payload.write_all(&key_len.to_be_bytes()).unwrap();
+            payload.write_all(prefix.as_bytes()).unwrap();
+            payload.into_inner()
+        }
+        Command::AvgRange(start, end) => {
+            let start_len = start.len() as u16;
+            let end_len = end.len() as u16;
+            let total_len =
+                OP_CODE_SIZE as u32 + KEY_LEN_SIZE as u32 * 2 + start_len as u32 + end_len as u32;
+            payload.write_all(&total_len.to_be_bytes()).unwrap();
+            payload.write_all(&[OpCode::AvgRange as u8]).unwrap();
+            payload.write_all(&start_len.to_be_bytes()).unwrap();
+            payload.write_all(start.as_bytes()).unwrap();
+            payload.write_all(&end_len.to_be_bytes()).unwrap();
+            payload.write_all(end.as_bytes()).unwrap();
+            payload.into_inner()
+        }
+        Command::MinPrefix(prefix) => {
+            let total_len = (OP_CODE_SIZE + KEY_LEN_SIZE + prefix.len()) as u32;
+            let key_len = prefix.len() as u16;
+            payload.write_all(&total_len.to_be_bytes()).unwrap();
+            payload.write_all(&[OpCode::MinPrefix as u8]).unwrap();
+            payload.write_all(&key_len.to_be_bytes()).unwrap();
+            payload.write_all(prefix.as_bytes()).unwrap();
+            payload.into_inner()
+        }
+        Command::MinRange(start, end) => {
+            let start_len = start.len() as u16;
+            let end_len = end.len() as u16;
+            let total_len =
+                OP_CODE_SIZE as u32 + KEY_LEN_SIZE as u32 * 2 + start_len as u32 + end_len as u32;
+            payload.write_all(&total_len.to_be_bytes()).unwrap();
+            payload.write_all(&[OpCode::MinRange as u8]).unwrap();
+            payload.write_all(&start_len.to_be_bytes()).unwrap();
+            payload.write_all(start.as_bytes()).unwrap();
+            payload.write_all(&end_len.to_be_bytes()).unwrap();
+            payload.write_all(end.as_bytes()).unwrap();
+            payload.into_inner()
+        }
+        Command::MaxPrefix(prefix) => {
+            let total_len = (OP_CODE_SIZE + KEY_LEN_SIZE + prefix.len()) as u32;
+            let key_len = prefix.len() as u16;
+            payload.write_all(&total_len.to_be_bytes()).unwrap();
+            payload.write_all(&[OpCode::MaxPrefix as u8]).unwrap();
+            payload.write_all(&key_len.to_be_bytes()).unwrap();
+            payload.write_all(prefix.as_bytes()).unwrap();
+            payload.into_inner()
+        }
+        Command::MaxRange(start, end) => {
+            let start_len = start.len() as u16;
+            let end_len = end.len() as u16;
+            let total_len =
+                OP_CODE_SIZE as u32 + KEY_LEN_SIZE as u32 * 2 + start_len as u32 + end_len as u32;
+            payload.write_all(&total_len.to_be_bytes()).unwrap();
+            payload.write_all(&[OpCode::MaxRange as u8]).unwrap();
             payload.write_all(&start_len.to_be_bytes()).unwrap();
             payload.write_all(start.as_bytes()).unwrap();
             payload.write_all(&end_len.to_be_bytes()).unwrap();
