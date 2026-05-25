@@ -113,7 +113,7 @@ Spec: `docs/superpowers/specs/2026-05-24-aggregation-design.md`
 
 Plan: `docs/superpowers/plans/2026-05-24-aggregation-sum-avg-min-max.md`
 
-PR: TBD
+PR: <https://github.com/SilvioPilato/rustikv/pull/49>
 
 ## #51 — `COUNT` command (LSM only)
 
