@@ -101,6 +101,8 @@ Comprehensive evaluation of optimization strategies for block-based compression 
 
 ## #85 — Refresh telemetry experiment doc once aggregation lands
 
+PR: https://github.com/SilvioPilato/rustikv/pull/50
+
 `docs/telemetry-store-experiment.md` framed the telemetry use case and listed what was missing. With TTL/INCR/PREFIX/COUNT and aggregation (#84) all merged, the doc was stale. Refreshed: moved SUM/AVG/MIN/MAX and COUNT into the "How it fits telemetry today" table as shipped capabilities, marked the feature path complete, added a worked end-to-end flow (timestamped-key MWRITETTL writes, PREFIX/RANGE windowing, COUNT cardinality, AVG/MIN/MAX rollups, INCR counters), and documented the companion ingestion+visualization path via the `rustikv-telemetry-gateway` repo (Graphite-plaintext ingest → MSET+TTL; HTTP `/query` → server-side bucketed aggregation → Grafana Infinity datasource). Documentation only — no code changes.
 
 ## #84 — Server-side aggregation: `SUM`/`AVG`/`MIN`/`MAX` (LSM only)
