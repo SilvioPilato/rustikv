@@ -262,15 +262,21 @@ git commit -m "#86 — widen incr to accept default expiry (create-path stamping
 
 In `LsmShared` add `default_ttl_secs: u32`. Add a `default_ttl_secs: u32` parameter to both `LsmEngine::new` and `LsmEngine::from_dir`, storing it in `LsmShared`. (It is read in a later task by nothing inside the engine except possibly future use; the spec keeps default resolution in dispatch, so this field exists mainly to let the manager record per-engine config and to keep the door open. If clippy flags it as unused, add `#[allow(dead_code)]` with a `// used by Collections / future per-engine resolution` comment, or expose a `pub fn default_ttl_secs(&self) -> u32` getter and use it in Task 6's manager. Prefer the getter.)
 
-- [ ] **Step 2: Update the two call sites in `src/main.rs`**
+- [ ] **Step 2: Update EVERY `LsmEngine::new` / `from_dir` call site (this breaks the build until all are done)**
 
-Both `LsmEngine::from_dir(...)` constructions gain a trailing `0` (the default collection's default TTL; the real value comes from the catalog in Task 6 once main.rs is rewritten — but main.rs's direct construction is replaced in Task 6, so this `0` is transitional).
+Adding a constructor parameter is a cross-cutting change: the tree will not compile (and `cargo test` cannot run) until every caller passes the new trailing `default_ttl_secs` argument. Pass `0` everywhere (today's behavior = no default). The complete call-site set, verified by grep:
+
+- `src/main.rs` — the single `LsmEngine::from_dir(...)` in the `EngineType::Lsm` branch. (Transitional `0`; this construction is replaced wholesale in Task 6 when main builds `Collections`.)
+- `src/bin/engbench.rs` — `LsmEngine::new(...)` around line 169.
+- Test files (each constructs engines directly, often via a local helper — update the helper once per file): `tests/lsm_aggregate.rs`, `tests/aggregate_command.rs`, `tests/count_command.rs`, `tests/lsm_count.rs`, `tests/prefix_command.rs`, `tests/lsmengine.rs`, `tests/lsm_incr.rs`, `tests/incr_command.rs`, `tests/block_sstable.rs`, `tests/ttl_command.rs`, `tests/lsm_ttl_atomic.rs`, `tests/leveled.rs`, `tests/lsm_ttl.rs`, `tests/concurrency.rs`.
+
+Re-grep before committing to be sure none were missed: `LsmEngine::(new|from_dir)` should appear only with the new trailing arg.
 
 - [ ] **Step 3: Compile + commit**
 
 ```bash
 cargo fmt && cargo clippy -- -D warnings && cargo test
-git add src/lsmengine.rs src/main.rs
+git add src/lsmengine.rs src/main.rs src/bin/engbench.rs tests/
 git commit -m "#86 — LsmEngine carries immutable default_ttl_secs"
 ```
 
@@ -828,7 +834,21 @@ let server = Server::new(collections, settings, stats);
 ```
 (Keep the KV branch's existing `from_dir`-or-`new` logic; just wrap the result in `Collections::single`.)
 
-- [ ] **Step 6: Write failing dispatch + default-TTL tests**
+- [ ] **Step 6: Migrate EVERY existing direct-`dispatch` caller (this breaks the build until all are done)**
+
+The new `dispatch` signature breaks six test files that call `dispatch(cmd, &engine, &stats, &cfg)` directly with the old 4-arg shape. They will not compile — and `cargo test` cannot run — until each is migrated. Verified call-site set: `tests/aggregate_command.rs`, `tests/count_command.rs`, `tests/prefix_command.rs`, `tests/incr_command.rs`, `tests/ttl_command.rs`, `tests/server_dispatch.rs`. (Several of these wrap `dispatch` in a local helper like `fn dispatch_cmd(...)` or `fn incr(...)` — migrate the helper once per file.)
+
+Migration shim — wrap the existing engine in a single-collection manager and thread a current-collection string:
+```rust
+use rustikv::collections::Collections;
+// engine: Arc<dyn StorageEngine> (LsmEngine or KVEngine) as before
+let collections = Collections::single("segment", engine);
+let mut current = "segment".to_string();
+let res = dispatch(cmd, &collections, &mut current, &stats, &cfg);
+```
+`Collections::single` stores the `Arc<dyn StorageEngine>` unchanged, so the data arms' `downcast_ref::<LsmEngine>()` still works for the LSM-only tests, and `default_ttl("segment")` returns `0` so these tests see today's no-default behavior. Re-grep `dispatch\(` before committing to confirm only the new 5-arg shape remains (plus the def in `dispatch.rs` and the call in `workerhandler.rs`).
+
+- [ ] **Step 7: Write failing dispatch + default-TTL tests**
 
 Extend `tests/collection_command.rs`. These are integration tests over the running server binary (mirror `tests/ttl_command.rs` / `tests/count_command.rs` setup — spawn the server, read the address, connect, send frames). Cover:
 - `USE` an existing collection then `WRITE`/`READ` lands there; same key in default collection is independent.
@@ -839,22 +859,22 @@ Extend `tests/collection_command.rs`. These are integration tests over the runni
 - `SHOW COLLECTIONS` lists default + created with their TTLs.
 - `DROP COLLECTION` then `READ` in it → Error "no such collection".
 
-- [ ] **Step 7: Run + verify**
+- [ ] **Step 8: Run + verify**
 
 Run: `cargo test --test collection_command`
 Expected: PASS.
 
-- [ ] **Step 8: Full suite (catches the TCP integration tests in `tests/ping.rs`, `tests/server_*.rs` that exercise the new dispatch signature)**
+- [ ] **Step 9: Full suite**
 
 ```bash
 cargo fmt && cargo clippy -- -D warnings && cargo test
 ```
-Expected: entire suite green, including pre-existing tests (proves the default-collection path is transparent).
+Expected: entire suite green. This must include (a) the six migrated direct-`dispatch` test files from Step 6, and (b) the TCP integration tests in `tests/ping.rs` / `tests/server_*.rs`, which spawn the server binary and exercise the new wiring end-to-end. Green here proves the default-collection path is transparent to existing clients.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add src/server/ src/main.rs tests/collection_command.rs
+git add src/server/ src/main.rs tests/
 git commit -m "#86 — route dispatch per-collection; default-TTL resolution; control commands"
 ```
 
