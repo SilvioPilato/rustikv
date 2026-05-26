@@ -4,10 +4,6 @@ _None._
 
 # Open Tasks
 
-## #85 — Refresh telemetry experiment doc once aggregation lands
-
-`docs/telemetry-store-experiment.md` frames the telemetry use case and lists what's missing. With TTL/INCR/PREFIX/COUNT merged and aggregation (#84) the last gap, this doc is stale: it still files server-side aggregation under "What's missing and why it matters" (item 5) and COUNT under "nice to have". Once #84 merges, move aggregation (and COUNT) into the "How it fits telemetry today" table as shipped capabilities, update the "Suggested path" diagram to show the full path complete, and add concrete worked examples of the end-to-end telemetry flow now possible (e.g. timestamped-key writes via `MSET`, `RANGE`/`PREFIX` windowing, `COUNT` cardinality, `SUM`/`AVG`/`MIN`/`MAX` over a window). **Depends on #84 landing** — don't start until aggregation is merged, or the doc will claim capabilities that don't exist yet. Out of scope: changing any code; this is documentation only.
-
 ## #83 — Key-only LSM scan path to avoid value materialisation in COUNT
 
 `COUNT <prefix>` and `COUNT <start> <end>` use a `BTreeSet<String>` merge to avoid *storing* values in memory, but the underlying `iter_files_for_range` / `iter_all` SSTable iterators still deserialise full `Record` structs (key + value bytes + metadata) off disk on every scan. For large values this means significant unnecessary I/O and allocation — the value is read, then immediately dropped. The same applies to any future count-style command. Two approaches worth evaluating: (1) a **key-only index** — a secondary sorted on-disk structure (one entry per live key: key + offset + tombstone flag + expiry) that COUNT/PREFIX can iterate without touching the value segment; (2) **key-only SSTable frames** — a separate serialisation path that emits only key+metadata bytes alongside the existing full-record SSTable, letting key-range scans skip value reads entirely. Either approach requires changes to the compaction pipeline (to write the key-only structure) and to `RangeScan` (to expose a key-iterator path). Depends on #51 landing (defines the COUNT semantics that motivate this). Out of scope: changing the existing `RANGE`/`PREFIX` value-returning commands (they need values).
@@ -102,6 +98,12 @@ Extend the block-based SSTable format (from #29) with per-block integrity checks
 Comprehensive evaluation of optimization strategies for block-based compression (from #29). Implement and benchmark: (1) block-level decompression caching (LRU in-memory cache), (2) lazy decompression (only decompress blocks on key access), (3) parallel decompression for range scans (decompress multiple blocks concurrently), (4) SIMD optimization for LZ77 match-finding and copying, (5) prefetching for sequential reads. Measure latency, throughput, and memory overhead against baseline. Generate comparison report. Depends on #29. Low priority—exploratory task to understand real-world performance gains and tradeoffs.
 
 # Closed Tasks
+
+## #85 — Refresh telemetry experiment doc once aggregation lands
+
+PR: https://github.com/SilvioPilato/rustikv/pull/50
+
+`docs/telemetry-store-experiment.md` framed the telemetry use case and listed what was missing. With TTL/INCR/PREFIX/COUNT and aggregation (#84) all merged, the doc was stale. Refreshed: moved SUM/AVG/MIN/MAX and COUNT into the "How it fits telemetry today" table as shipped capabilities, marked the feature path complete, added a worked end-to-end flow (timestamped-key MWRITETTL writes, PREFIX/RANGE windowing, COUNT cardinality, AVG/MIN/MAX rollups, INCR counters), and documented the companion ingestion+visualization path via the `rustikv-telemetry-gateway` repo (Graphite-plaintext ingest → MSET+TTL; HTTP `/query` → server-side bucketed aggregation → Grafana Infinity datasource). Documentation only — no code changes.
 
 ## #84 — Server-side aggregation: `SUM`/`AVG`/`MIN`/`MAX` (LSM only)
 
