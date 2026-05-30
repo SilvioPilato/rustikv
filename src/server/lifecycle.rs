@@ -9,22 +9,21 @@ use std::{
 };
 
 use crate::{
-    engine::StorageEngine,
-    server::{Acceptor, CompactionCfg, Worker},
+    server::{Acceptor, Backend, CompactionCfg, Worker},
     settings::Settings,
     stats::Stats,
 };
 
 pub struct Server {
-    database: Arc<dyn StorageEngine>,
+    backend: Arc<Backend>,
     settings: Settings,
     stats: Arc<Stats>,
 }
 
 impl Server {
-    pub fn new(database: Arc<dyn StorageEngine>, settings: Settings, stats: Arc<Stats>) -> Self {
+    pub fn new(backend: Arc<Backend>, settings: Settings, stats: Arc<Stats>) -> Self {
         Self {
-            database,
+            backend,
             settings,
             stats,
         }
@@ -74,7 +73,7 @@ impl Server {
             let (sender, receiver) = mpsc::channel();
             let worker = Worker::new(
                 receiver,
-                self.database.clone(),
+                self.backend.clone(),
                 self.stats.clone(),
                 compaction_cfg,
                 self.settings.read_timeout_secs,

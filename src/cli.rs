@@ -52,6 +52,43 @@ pub fn parse_command(line: &str) -> ParseResult {
                 ParseResult::InvalidInput("Usage: INCR <key>".to_string())
             }
         }
+        "USE" => {
+            if words.len() == 2 {
+                ParseResult::Cmd(Command::Use(words[1].to_string()))
+            } else {
+                ParseResult::InvalidInput("Usage: USE <collection>".to_string())
+            }
+        }
+        "CREATE" => {
+            if words.len() >= 3 && words[1].eq_ignore_ascii_case("COLLECTION") {
+                let name = words[2].to_string();
+                match words.get(3) {
+                    None => ParseResult::Cmd(Command::CreateCollection(name, None)),
+                    Some(ttl_str) => match ttl_str.parse::<u32>() {
+                        Ok(ttl) => ParseResult::Cmd(Command::CreateCollection(name, Some(ttl))),
+                        Err(_) => ParseResult::InvalidInput("Invalid default TTL".to_string()),
+                    },
+                }
+            } else {
+                ParseResult::InvalidInput(
+                    "Usage: CREATE COLLECTION <name> [default_ttl_secs]".to_string(),
+                )
+            }
+        }
+        "DROP" => {
+            if words.len() == 3 && words[1].eq_ignore_ascii_case("COLLECTION") {
+                ParseResult::Cmd(Command::DropCollection(words[2].to_string()))
+            } else {
+                ParseResult::InvalidInput("Usage: DROP COLLECTION <name>".to_string())
+            }
+        }
+        "SHOW" => {
+            if words.len() == 2 && words[1].eq_ignore_ascii_case("COLLECTIONS") {
+                ParseResult::Cmd(Command::ShowCollections)
+            } else {
+                ParseResult::InvalidInput("Usage: SHOW COLLECTIONS".to_string())
+            }
+        }
         "COMPACT" => ParseResult::Cmd(Command::Compact),
         "STATS" => ParseResult::Cmd(Command::Stats),
         "LIST" => ParseResult::Cmd(Command::List),

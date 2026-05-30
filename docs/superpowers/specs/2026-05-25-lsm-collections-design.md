@@ -28,6 +28,49 @@ handles keyed by name and routes each command. The new concepts — registry,
 catalog, routing, control commands — live in the manager and the dispatch layer,
 not in the storage internals.
 
+## As-built (deviations from this design)
+
+The implementation follows this design's shape but differs in several concrete
+details. Where this document and the code disagree, the code is authoritative.
+
+- **Per-collection engine config is stored in the catalog (no longer Future
+  Work).** Each catalog line carries the full engine configuration, not just the
+  default TTL. The format is **9 tab-separated fields**:
+  `name⇥default_ttl_secs⇥max_memtable_bytes⇥block_size_bytes⇥block_compression_enabled⇥storage_strategy⇥leveled_num_levels⇥leveled_l0_threshold⇥leveled_l1_max_bytes`,
+  one collection per line, written atomically (tmp + rename), sorted by name for
+  deterministic output. This closes a correctness hole: a collection's SSTables
+  are reopened with the same `storage_strategy`/`block` settings they were
+  created with, rather than whatever the server is currently flagged with.
+- **`Collections` holds a `metadata: RwLock<HashMap<String, CollectionMeta>>`**
+  (full per-collection config), not a `default_ttls: HashMap<String, u32>`. A
+  separate `engines` registry holds the `Arc<LsmEngine>` handles. Lock order is
+  fixed: `engines` before `metadata`. A `template: LsmConfig` is stored to stamp
+  config onto newly-created collections.
+- **The engine does *not* carry `default_ttl_secs`.** Default-TTL resolution
+  happens entirely in the dispatch layer via `resolve_expiry(now, ttl, default)`.
+  The widened `StorageEngine::incr(key, default_expiry_ms)` receives an already
+  resolved expiry and applies it only on the create path; `LsmShared` is
+  unchanged. (This is cleaner than the design's "`default_ttl_secs` on each
+  `LsmEngine`".)
+- **KV vs LSM is modelled by a `Backend` enum** (`Backend::Kv(Arc<dyn
+  StorageEngine>)` / `Backend::Lsm(Arc<Collections>)`) threaded through
+  `Server`/`Worker`/`WorkerHandler`, not by wrapping the KV engine in a
+  single-entry `Collections`. `Collections` is strictly LSM (`Arc<LsmEngine>`).
+- **Routing lives in `route()` above `dispatch`.** `route()` handles the four
+  collection commands and forwards data commands to `dispatch_with_default_ttl`.
+  The original 4-arg `dispatch(cmd, engine, stats, cfg)` is kept as a wrapper
+  (default TTL = 0) so existing direct-dispatch tests are unchanged.
+- **Manager methods**: `get`, `create(CollectionMeta)` / `create_named(name,
+  ttl)`, `remove(name)` (named `remove`, not `drop`, to avoid colliding with
+  `Drop::drop` through `Arc`), `show() -> Vec<CollectionMeta>`, `default_ttl`,
+  `default_name`, and the constructor `load_from_file(db_path, default_name,
+  template)`.
+- **Name charset** is `[A-Za-z0-9-]+` as designed; uppercase is currently
+  allowed (note: case-insensitive filesystems make `Foo`/`foo` collide on disk).
+- **Tests**: `tests/collections.rs` (manager unit), `tests/collections_tcp.rs`
+  (end-to-end TCP incl. default-TTL expiry + restart persistence),
+  `tests/bffp_collections.rs` (wire round-trips for op codes 25–28).
+
 ## Commands
 
 Four new TCP commands, op codes 25–28 (following aggregation's 17–24):
@@ -271,9 +314,10 @@ integration tests, all under `tests/`.
 
 ## Out of scope / Future Work
 
-- **Per-collection compaction strategy / block settings** — new collections inherit
-  the server's CLI-configured settings. (`#75` floated per-collection config; scoped
-  here to default TTL.)
+- ~~**Per-collection compaction strategy / block settings**~~ — **done.** Each
+  collection's full engine config is stamped from the server template at create
+  time and persisted in the catalog (see As-built). Exposing it for *per-create
+  override* on the wire (a richer `CREATE COLLECTION`) remains future work.
 - **`ALTER COLLECTION`** — default TTL is immutable once set.
 - **Per-collection STATS / observability** — `STATS` stays server-wide; filed as a
   follow-up.

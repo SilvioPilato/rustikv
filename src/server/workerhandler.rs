@@ -7,15 +7,15 @@ use std::{
 };
 
 use crate::{
-    engine::StorageEngine,
-    server::{CompactionCfg, Connection, ConnectionAction, dispatch},
+    server::{Backend, CompactionCfg, Connection, ConnectionAction, route},
     stats::Stats,
 };
 const SWEEP_INTERVAL: Duration = Duration::from_millis(100);
 pub struct WorkerHandler {
     incoming: Receiver<TcpStream>,
     conns: HashMap<Token, Connection>,
-    engine: Arc<dyn StorageEngine>,
+    backend: Arc<Backend>,
+    default_collection: String,
     stats: Arc<Stats>,
     cfg: CompactionCfg,
     next_token: usize,
@@ -25,14 +25,16 @@ pub struct WorkerHandler {
 
 impl WorkerHandler {
     pub fn new(
-        engine: Arc<dyn StorageEngine>,
+        backend: Arc<Backend>,
         stats: Arc<Stats>,
         cfg: CompactionCfg,
         incoming: Receiver<TcpStream>,
         read_timeout_secs: Option<Duration>,
     ) -> Self {
+        let default_collection = backend.default_collection();
         Self {
-            engine,
+            backend,
+            default_collection,
             stats,
             cfg,
             incoming,
@@ -57,7 +59,13 @@ impl EventHandler for WorkerHandler {
             match conn.on_readable() {
                 Ok((cmds, action)) => {
                     for cmd in cmds {
-                        let res = dispatch(cmd, &self.engine, &self.stats, &self.cfg);
+                        let res = route(
+                            cmd,
+                            &self.backend,
+                            &mut conn.current_collection,
+                            &self.stats,
+                            &self.cfg,
+                        );
                         conn.enqueue_response(&res);
                     }
                     if matches!(action, ConnectionAction::Close) {
@@ -166,8 +174,10 @@ impl EventHandler for WorkerHandler {
                 let _ = registry.deregister(&mut stream);
                 continue;
             }
-            self.conns
-                .insert(token, Connection::new(stream, self.stats.clone()));
+            self.conns.insert(
+                token,
+                Connection::new(stream, self.stats.clone(), self.default_collection.clone()),
+            );
         }
     }
 }

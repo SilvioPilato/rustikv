@@ -2,6 +2,7 @@ pub mod bffp;
 pub mod block;
 pub mod bloom;
 pub mod cli;
+pub mod collections;
 pub mod crc;
 pub mod engine;
 pub mod hash_index;

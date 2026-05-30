@@ -1,5 +1,14 @@
 # LSM Collections + Per-Collection Default TTL Implementation Plan
 
+> **STATUS: implemented — this plan is a historical artifact.** The shipped
+> implementation diverged from the task-by-task steps below in several ways
+> (LSM-only `Backend` enum instead of a `Collections::single` shim; a 9-field
+> catalog carrying full per-collection config; `route()` above a kept-as-wrapper
+> `dispatch`; `Collections::remove` not `drop`; `metadata` map not `default_ttls`).
+> See the **"As-built (deviations from this design)"** section in the spec
+> (`docs/superpowers/specs/2026-05-25-lsm-collections-design.md`) for the
+> authoritative summary. The code is the source of truth.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add LSM-only collections (independent named keyspaces) selectable per-connection via `USE`, created/dropped explicitly with a persisted catalog, each carrying an immutable default TTL applied to writes that don't specify one.

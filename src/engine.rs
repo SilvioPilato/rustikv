@@ -24,7 +24,10 @@ pub trait StorageEngine: Send + Sync {
     fn mset(&self, items: Vec<(String, String)>) -> io::Result<()> {
         self.mset_with_ttl(items.into_iter().map(|(k, v)| (k, v, None)).collect())
     }
-    fn incr(&self, key: &str) -> io::Result<i64>;
+    /// Increment the integer value at `key`, creating it at 1 if absent.
+    /// `default_expiry_ms` is applied only on the create path; an existing
+    /// key keeps its current expiry across the bump.
+    fn incr(&self, key: &str, default_expiry_ms: Option<u64>) -> io::Result<i64>;
 }
 
 pub trait RangeScan {
