@@ -1,18 +1,6 @@
 # In Progress
 
-## #86 — LSM collections + per-collection default TTL (#75 + #76)
-
-LSM-only **collections** (independent named keyspaces, each its own memtable/WAL/SSTable set + engine config) selectable per-connection via `USE <collection>`, created/dropped explicitly (`CREATE COLLECTION <name> [default_ttl_secs]`, `DROP COLLECTION <name>`, `SHOW COLLECTIONS`), with a persisted catalog. Each collection carries an immutable **default TTL** applied to writes (`WRITE`/`MSET`) and `INCR`-created keys that don't specify one; `Some(0)` explicitly overrides to no-expiry. A built-in default collection (named from `--name`, e.g. `segment`) is active on every new connection, so existing clients/tests are unaffected. KV engine returns a not-supported error for all four collection commands.
-
-`Collections` (`src/collections.rs`) owns a name→`Arc<LsmEngine>` `engines` registry plus a name→`CollectionMeta` `metadata` map (lock order: engines before metadata), stamping new collections from a stored `LsmConfig` template. The on-disk catalog (`<db_path>/collections.catalog`) is **9 tab-separated fields per line** — name, default TTL, and the full engine config (max_memtable_bytes, block size/compression, storage strategy, leveled params) — written atomically (tmp + rename), sorted by name; so a collection's SSTables reopen with the settings they were created with. KV vs LSM is modelled by a `Backend` enum threaded through `Server`/`Worker`/`WorkerHandler`; `route()` handles collection commands above a kept-as-wrapper `dispatch` (`dispatch_with_default_ttl` does the work). `StorageEngine::incr` widened to take `default_expiry_ms`, applied only on the create path. Wired through BFFP (op codes 25–28 + 4 `Command` variants + encode/decode), `cli.rs`, and `main.rs`.
-
-New suites: `tests/collections.rs` (12 manager unit tests — create/remove/show, catalog round-trip + reload, data isolation), `tests/collections_tcp.rs` (11 end-to-end TCP tests — routing, isolation, KV-rejects, per-collection default-TTL *and INCR-default-TTL expiry*, explicit-override, restart persistence), `tests/bffp_collections.rs` (5 wire round-trips). Full suite 495 passed / 0 failed.
-
-**Remaining before close**: not yet committed/PR'd. Open follow-ups (own tasks): per-create config override on the wire; `ALTER COLLECTION`; per-collection `STATS`; optional case-insensitive name normalisation.
-
-Spec: `docs/superpowers/specs/2026-05-25-lsm-collections-design.md` (see "As-built")
-
-Plan: `docs/superpowers/plans/2026-05-25-lsm-collections.md`
+_None._
 
 # Open Tasks
 
@@ -114,6 +102,18 @@ Extend the block-based SSTable format (from #29) with per-block integrity checks
 Comprehensive evaluation of optimization strategies for block-based compression (from #29). Implement and benchmark: (1) block-level decompression caching (LRU in-memory cache), (2) lazy decompression (only decompress blocks on key access), (3) parallel decompression for range scans (decompress multiple blocks concurrently), (4) SIMD optimization for LZ77 match-finding and copying, (5) prefetching for sequential reads. Measure latency, throughput, and memory overhead against baseline. Generate comparison report. Depends on #29. Low priority—exploratory task to understand real-world performance gains and tradeoffs.
 
 # Closed Tasks
+
+## #86 — LSM collections + per-collection default TTL (#75 + #76)
+
+LSM-only **collections** (independent named keyspaces, each its own memtable/WAL/SSTable set + engine config) selectable per-connection via `USE <collection>`, created/dropped explicitly (`CREATE COLLECTION <name> [default_ttl_secs]` op 26, `DROP COLLECTION <name>` op 27, `SHOW COLLECTIONS` op 28, `USE` op 25), with a persisted catalog. Each collection carries an immutable **default TTL** applied to writes (`WRITE`/`MSET`) and `INCR`-created keys that don't specify one; `Some(0)` explicitly overrides to no-expiry. A built-in default collection (named from `--name`, e.g. `segment`) is active on every new connection, so existing clients/tests/data are unaffected. KV engine returns a not-supported error for all four collection commands.
+
+`Collections` (`src/collections.rs`) owns a name→`Arc<LsmEngine>` `engines` registry plus a name→`CollectionMeta` `metadata` map (lock order: engines before metadata), stamping new collections from a stored `LsmConfig` template. The on-disk catalog (`<db_path>/collections.catalog`) is **9 tab-separated fields per line** — name, default TTL, and the full engine config (max_memtable_bytes, block size/compression, storage strategy, leveled params) — written atomically (tmp + rename), sorted by name; so a collection's SSTables reopen with the settings they were created with. KV vs LSM is modelled by a `Backend` enum threaded through `Server`/`Worker`/`WorkerHandler`; `route()` handles collection commands above a kept-as-wrapper `dispatch` (`dispatch_with_default_ttl` does the work). `StorageEngine::incr` widened to take `default_expiry_ms`, applied only on the create path. Wired through BFFP (op codes 25–28 + 4 `Command` variants + encode/decode), `cli.rs`, and `main.rs`. Also de-flaked `tests/compact_async.rs::stats_show_write_blocked_during_compaction` (raced the compaction window: trivial single-segment compaction + soft-flag sampling + tight 3 s timeouts → small segments for a real window, continuous writes until compaction completes, generous deadline). New suites: `tests/collections.rs` (12 manager unit tests), `tests/collections_tcp.rs` (11 end-to-end TCP tests incl. default-TTL *and INCR-default-TTL* expiry + restart persistence), `tests/bffp_collections.rs` (5 wire round-trips). Full suite 495 passed / 0 failed. Follow-ups (own tasks): per-create config override on the wire; `ALTER COLLECTION`; per-collection `STATS`; optional case-insensitive name normalisation.
+
+Spec: `docs/superpowers/specs/2026-05-25-lsm-collections-design.md` (see "As-built")
+
+Plan: `docs/superpowers/plans/2026-05-25-lsm-collections.md`
+
+PR: <https://github.com/SilvioPilato/rustikv/pull/51>
 
 ## #84 — Server-side aggregation: `SUM`/`AVG`/`MIN`/`MAX` (LSM only)
 
