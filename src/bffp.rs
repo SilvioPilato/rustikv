@@ -12,6 +12,7 @@ const TTL_LEN_SIZE: usize = 4;
 
 const FLAG_HAS_TTL: u8 = 1;
 
+#[derive(Clone)]
 pub enum Command {
     Invalid(u8),
     Read(String),
