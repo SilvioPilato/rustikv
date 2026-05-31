@@ -16,8 +16,9 @@ The full telemetry feature path has shipped. Everything below works now on the L
 | Need | Capability |
 |------|-----------|
 | High write throughput | LSM engine — append-only writes |
-| Batch ingestion | `MSET` (and `MWRITETTL`) — many points per round trip |
-| Bounded retention | `TTL` per key (and write-with-TTL); expired points drop at compaction |
+| Batch ingestion | `MSET` — many points per round trip; default TTL applied automatically |
+| Bounded retention | Per-collection default TTL (`CREATE COLLECTION metrics 86400`); also per-key TTL as fallback |
+| Separate retention per metric family | Collections — each with its own keyspace, WAL, SSTables, and default TTL |
 | Counter/rate metrics | `INCR` — atomic, preserves any existing TTL |
 | Time-range queries | `RANGE <start> <end>` — sorted points in a window |
 | Metric-namespace queries | `PREFIX <prefix>` — every point under a namespace |
@@ -26,7 +27,7 @@ The full telemetry feature path has shipped. Everything below works now on the L
 | Storage efficiency | LZ77 block compression on SSTables |
 | Fast existence checks | Bloom filter per SSTable |
 
-The earlier "what's missing" list is gone: TTL, INCR, PREFIX, COUNT, and SUM/AVG/MIN/MAX are all merged.
+The earlier "what's missing" list is gone: TTL, INCR, PREFIX, COUNT, SUM/AVG/MIN/MAX, and per-collection default TTL are all merged.
 
 ## Key schema for time series
 
@@ -40,11 +41,20 @@ Fixed-width zero-padding is what makes the LSM ordered scans line up with numeri
 
 ## Worked end-to-end flow
 
-The example below uses the `rustikli` REPL verbs for clarity. (`WRITETTL <key> <seconds> <value>` and `MWRITETTL <seconds> <k> <v> ...` set values with a TTL in one step.)
+With collections, retention is declared once at collection creation — individual writes use plain `MSET` and the default TTL is applied automatically.
 
 ```text
-# Ingest three samples of pi.cpu.user with a 24h TTL (retention)
-rustikli> MWRITETTL 86400 pi.cpu.user:0001748169600 10 pi.cpu.user:0001748169660 20 pi.cpu.user:0001748169720 30
+# Create a collection with 24h default TTL (do this once at startup)
+rustikli> CREATE COLLECTION metrics 86400
+OK
+
+# Switch to it
+rustikli> USE metrics
+OK
+
+# Ingest three samples — no per-key TTL needed, the collection default applies
+rustikli> MSET pi.cpu.user:0001748169600 10 pi.cpu.user:0001748169660 20 pi.cpu.user:0001748169720 30
+OK
 
 # All points for one metric (namespace scan)
 rustikli> PREFIX pi.cpu.user:
@@ -72,7 +82,7 @@ rustikli> MAX pi.cpu.user:0001748169600 pi.cpu.user:0001748169720
 30
 ```
 
-Counter-style metrics use `INCR` instead of `WRITE`:
+Counter-style metrics use `INCR` instead of `WRITE` (TTL applied on first create):
 
 ```text
 rustikli> INCR pi.http.requests:0001748169600
@@ -80,6 +90,19 @@ rustikli> INCR pi.http.requests:0001748169600
 rustikli> INCR pi.http.requests:0001748169600
 2
 ```
+
+You can also create **separate collections per metric family** with different retention windows:
+
+```text
+rustikli> CREATE COLLECTION cpu 86400        # 24h retention
+rustikli> CREATE COLLECTION memory 604800    # 7-day retention
+rustikli> SHOW COLLECTIONS
+cpu     86400
+memory  604800
+segment 0
+```
+
+Each collection has its own keyspace, WAL, and SSTable files — compaction and TTL expiry run independently.
 
 ## Ingestion and visualization: the telemetry gateway
 
@@ -89,8 +112,11 @@ dashboard talks to it directly. The companion project
 bridges both ends:
 
 - **Ingest:** accepts **Graphite plaintext** (`metric.path value timestamp`) from
-  any collector (collectd, Telegraf) and writes batched `MSET`s with a TTL,
-  building exactly the `<metric>:<padded-ts>` keys above.
+  any collector (collectd, Telegraf) and writes batched `MSET`s. With a
+  per-collection default TTL set at startup, the gateway no longer needs to pass
+  a TTL on each write — it issues `USE <collection>` once per connection and
+  plain `MSET`s carry the collection's retention automatically, building exactly
+  the `<metric>:<padded-ts>` keys above.
 - **Serve:** an HTTP `/query` endpoint returns JSON time series for Grafana's
   Infinity datasource. For `agg=avg|min|max|sum` it splits the window into
   buckets and issues one `AvgRange`/`MinRange`/`MaxRange`/`SumRange` per bucket —
@@ -107,9 +133,11 @@ Replication, consistent hashing, and partitioning are all single-node concerns f
 ## Feature path — complete
 
 ```
-TTL  →  INCR  →  PREFIX  →  COUNT  →  SUM/AVG/MIN/MAX        ✅ all shipped
+TTL  →  INCR  →  PREFIX  →  COUNT  →  SUM/AVG/MIN/MAX  →  Collections + per-collection TTL        ✅ all shipped
 ```
 
 The first two unlocked the core telemetry patterns (bounded retention, counters);
 PREFIX/COUNT made namespaces ergonomic; server-side aggregation removed the
-client-side scan as the scalability bottleneck.
+client-side scan as the scalability bottleneck; collections give each metric
+family its own isolated keyspace with retention declared once at the collection
+level rather than repeated on every write.
