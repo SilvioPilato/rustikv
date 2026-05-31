@@ -107,11 +107,11 @@ fn use_collection(backend: &Backend, current: &mut String, name: String) -> Vec<
 }
 
 fn create_collection(backend: &Backend, name: String, default_ttl: Option<u32>) -> Vec<u8> {
-    let c = match lsm(backend) {
+    let collection = match lsm(backend) {
         Ok(c) => c,
         Err(resp) => return resp,
     };
-    match c.create_named(&name, default_ttl.unwrap_or(0)) {
+    match collection.create_named(&name, default_ttl.unwrap_or(0)) {
         Ok(()) => encode_frame(ResponseStatus::Ok, &[]),
         Err(e) => encode_frame(ResponseStatus::Error, &[e.to_string()]),
     }
