@@ -30,11 +30,7 @@ impl StorageStrategyKind {
 
 impl fmt::Display for StorageStrategyKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            StorageStrategyKind::SizeTiered => "size-tiered",
-            StorageStrategyKind::Leveled => "leveled",
-        };
-        write!(f, "{s}")
+        write!(f, "{}", self.as_str())
     }
 }
 

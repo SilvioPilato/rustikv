@@ -53,6 +53,22 @@ impl Collections {
         default_name: String,
         template: LsmConfig,
     ) -> io::Result<Collections> {
+        // The default collection name comes from `--name` and is stamped into
+        // the catalog like any other collection, so it must satisfy the same
+        // charset rule. Reject it up front: bootstrap below would otherwise
+        // persist a catalog that `parse_catalog` rejects on the next start
+        // (and an out-of-charset name like `a_b` could let a sibling drop
+        // collide with this collection's files). Fail fast with a clear error.
+        if !Self::is_valid_collection_name(&default_name) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "invalid default collection name '{default_name}': \
+                     must be non-empty and match [A-Za-z0-9-]+ (set via --name)"
+                ),
+            ));
+        }
+
         // A missing catalog file means a brand-new database: start empty.
         let catalog_path = Path::new(&db_path).join(CATALOG_FILE);
         let mut metadata = HashMap::new();
@@ -280,41 +296,49 @@ impl Collections {
                 "cannot drop the default collection",
             ));
         }
-        let mut engines = self.engines.write().unwrap();
-        let mut metadata = self.metadata.write().unwrap();
+        // Mutate the registry and persist the catalog under the locks, then
+        // release them *before* the slow part (joining the engine's flush
+        // thread and deleting files). Every data op routes through `get()`
+        // (an `engines` read lock), so holding the write lock across that I/O
+        // would stall reads/writes on *every* collection for the duration.
+        let engine = {
+            let mut engines = self.engines.write().unwrap();
+            let mut metadata = self.metadata.write().unwrap();
 
-        // Keep the removed entries so we can restore them if persist fails.
-        let engine = match engines.remove(name) {
-            Some(e) => e,
-            None => {
-                return Err(io::Error::new(
-                    io::ErrorKind::NotFound,
-                    "no such collection",
-                ));
+            // Keep the removed entries so we can restore them if persist fails.
+            let engine = match engines.remove(name) {
+                Some(e) => e,
+                None => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        "no such collection",
+                    ));
+                }
+            };
+            let meta = metadata.remove(name);
+            if meta.is_none() {
+                eprintln!(
+                    "collections: registry inconsistency — '{name}' present in engines but missing from metadata"
+                );
             }
-        };
-        let meta = metadata.remove(name);
-        if meta.is_none() {
-            eprintln!(
-                "collections: registry inconsistency — '{name}' present in engines but missing from metadata"
-            );
-        }
 
-        // Record the removal durably *before* touching data files: a crash
-        // between the two then leaves harmless orphan files rather than a
-        // catalog that points at deleted data.
-        if let Err(e) = Collections::persist_catalog(&self.db_path, metadata.values()) {
-            // Roll back so memory matches the still-intact catalog on disk.
-            engines.insert(name.to_string(), engine);
-            if let Some(m) = meta {
-                metadata.insert(name.to_string(), m);
+            // Record the removal durably *before* touching data files: a crash
+            // between the two then leaves harmless orphan files rather than a
+            // catalog that points at deleted data.
+            if let Err(e) = Collections::persist_catalog(&self.db_path, metadata.values()) {
+                // Roll back so memory matches the still-intact catalog on disk.
+                engines.insert(name.to_string(), engine);
+                if let Some(m) = meta {
+                    metadata.insert(name.to_string(), m);
+                }
+                return Err(e);
             }
-            return Err(e);
-        }
+            engine
+        }; // registry locks released here
 
         // Drop our engine reference now (before deleting files) so its flush
         // thread is joined here if this was the last Arc — avoids racing a
-        // final flush against file deletion.
+        // final flush against file deletion. Done outside the registry locks.
         drop(engine);
         Collections::delete_collection_files(&self.db_path, name)?;
 
@@ -342,10 +366,16 @@ impl Collections {
         metadata.insert(name.clone(), config);
 
         // On a persist failure, roll back the in-memory inserts so memory
-        // matches the durable catalog (contract: on Err, nothing changed).
+        // matches the durable catalog (contract: on Err, nothing changed) and
+        // clean up the WAL/SSTable files `build_engine` just created, so a
+        // failed CREATE leaves no orphans behind. Drop the engine first to
+        // join its flush thread and release file handles (required on Windows
+        // before the files can be removed).
         if let Err(e) = Collections::persist_catalog(&self.db_path, metadata.values()) {
-            engines.remove(&name);
+            let engine = engines.remove(&name);
             metadata.remove(&name);
+            drop(engine);
+            let _ = Collections::delete_collection_files(&self.db_path, &name);
             return Err(e);
         }
         Ok(())

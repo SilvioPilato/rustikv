@@ -63,6 +63,81 @@ fn fresh_load_creates_default_and_persists_catalog() {
     );
 }
 
+#[test]
+fn load_accepts_hyphenated_default_name() {
+    // A hyphen is in the legal charset, so a `--name` like this must load.
+    let dir = temp_dir("hyphendefault");
+    let c = Collections::load_from_file(dir, "my-segment".to_string(), test_config())
+        .expect("hyphenated default name is valid");
+    assert!(c.get("my-segment").is_some());
+}
+
+/// `load_from_file` returns the opaque `Collections` on success, which isn't
+/// `Debug`, so `unwrap_err`/`expect_err` won't compile. Extract the error by
+/// hand instead.
+fn load_err(dir: String, default_name: &str) -> std::io::Error {
+    match Collections::load_from_file(dir, default_name.to_string(), test_config()) {
+        Ok(_) => panic!("expected load_from_file to fail, but it succeeded"),
+        Err(e) => e,
+    }
+}
+
+#[test]
+fn load_rejects_invalid_default_name() {
+    // The default collection name comes from `--name`; if it falls outside the
+    // [A-Za-z0-9-] charset the server must refuse to start with a clear error
+    // instead of booting once and then failing to reload its own catalog.
+    let dir = temp_dir("baddefault");
+    assert_eq!(
+        load_err(dir.clone(), "bad_name").kind(),
+        std::io::ErrorKind::InvalidInput
+    );
+
+    // And it must not have written a catalog it would later reject.
+    assert!(
+        !Path::new(&dir).join(CATALOG_FILE).exists(),
+        "an invalid default name must not persist a catalog"
+    );
+
+    // Empty name is rejected too.
+    assert_eq!(
+        load_err(temp_dir("emptydefault"), "").kind(),
+        std::io::ErrorKind::InvalidInput
+    );
+}
+
+#[test]
+fn load_rejects_malformed_catalog() {
+    // A corrupt catalog line must fail the load loudly rather than silently
+    // dropping collections (which would orphan their data files).
+    let dir = temp_dir("badcatalog");
+    fs::write(
+        Path::new(&dir).join(CATALOG_FILE),
+        "metrics\t0\tnot-enough-fields\n",
+    )
+    .unwrap();
+    assert_eq!(
+        load_err(dir, DEFAULT).kind(),
+        std::io::ErrorKind::InvalidData
+    );
+}
+
+#[test]
+fn load_rejects_catalog_with_bad_field_value() {
+    // Right field count, but a non-numeric TTL: still InvalidData.
+    let dir = temp_dir("badfield");
+    fs::write(
+        Path::new(&dir).join(CATALOG_FILE),
+        // name, ttl(bad), memtable, block, compress, strategy, levels, l0, l1
+        "metrics\tnotanumber\t1048576\t4096\ttrue\tsize-tiered\t4\t4\t10485760\n",
+    )
+    .unwrap();
+    assert_eq!(
+        load_err(dir, DEFAULT).kind(),
+        std::io::ErrorKind::InvalidData
+    );
+}
+
 // --- create ---
 
 #[test]
