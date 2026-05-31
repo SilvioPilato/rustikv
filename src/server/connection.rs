@@ -27,10 +27,11 @@ pub enum ConnectionAction {
 pub struct Connection {
     pub stream: mio::net::TcpStream,
     pub parser: FrameParser,
-    pub write_buf: Vec<u8>,     // pending bytes to send
-    pub write_offset: usize,    // how much of write_buf is already sent
-    pub last_activity: Instant, // for idle timeout sweep
+    pub write_buf: Vec<u8>,         // pending bytes to send
+    pub write_offset: usize,        // how much of write_buf is already sent
+    pub last_activity: Instant,     // for idle timeout sweep
     pub pending_close: bool, // set when readable signals Close; defer deregister until write_buf drains
+    pub current_collection: String, // per-connection routing target (set by USE)
     stats: Arc<Stats>,       // ties active_connections to Connection's lifetime via Drop
 }
 
@@ -89,7 +90,7 @@ impl Default for FrameParser {
 }
 
 impl Connection {
-    pub fn new(stream: mio::net::TcpStream, stats: Arc<Stats>) -> Self {
+    pub fn new(stream: mio::net::TcpStream, stats: Arc<Stats>, current_collection: String) -> Self {
         stats.active_connections.fetch_add(1, Ordering::Relaxed);
         Self {
             stream,
@@ -98,6 +99,7 @@ impl Connection {
             write_offset: 0,
             last_activity: Instant::now(),
             pending_close: false,
+            current_collection,
             stats,
         }
     }

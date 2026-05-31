@@ -10,6 +10,7 @@ use std::{
 };
 
 use crate::engine::TtlOutcome;
+use crate::settings::{BlockCompression, Settings, StorageStrategyKind};
 use crate::storage_strategy::StorageStrategy;
 use crate::utils::{is_expired, now_ms, prefix_successor};
 use crate::{
@@ -19,6 +20,30 @@ use crate::{
     wal::Wal,
 };
 use std::sync::atomic::Ordering::Relaxed;
+
+pub struct LsmConfig {
+    pub storage_strategy: StorageStrategyKind,
+    pub leveled_num_levels: usize,
+    pub leveled_l0_threshold: usize,
+    pub leveled_l1_max_bytes: u64,
+    pub block_size_bytes: usize,
+    pub block_compression_enabled: bool,
+    pub max_memtable_bytes: usize,
+}
+
+impl From<&Settings> for LsmConfig {
+    fn from(s: &Settings) -> Self {
+        LsmConfig {
+            storage_strategy: s.storage_strategy,
+            leveled_num_levels: s.leveled_num_levels,
+            leveled_l0_threshold: s.leveled_l0_threshold,
+            leveled_l1_max_bytes: s.leveled_l1_max_bytes,
+            block_size_bytes: (s.block_size_kb * 1024) as usize,
+            block_compression_enabled: matches!(s.block_compression, BlockCompression::Lz77),
+            max_memtable_bytes: s.max_segment_bytes as usize,
+        }
+    }
+}
 
 /// Lock-free read resolution: active → immutable → SSTable.
 /// Borrows state directly — cannot lock, so re-entrancy is structurally impossible.
@@ -473,7 +498,7 @@ impl StorageEngine for LsmEngine {
         Ok(())
     }
 
-    fn incr(&self, key: &str) -> io::Result<i64> {
+    fn incr(&self, key: &str, default_expiry_ms: Option<u64>) -> io::Result<i64> {
         let now = now_ms();
         let (memtable_size, value) = {
             let mut wal = self.shared.wal.lock().unwrap();
@@ -487,7 +512,8 @@ impl StorageEngine for LsmEngine {
                             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
                         ttl,
                     ),
-                    None => (0i64, None),
+                    // New key: stamp the collection default TTL (if any).
+                    None => (0i64, default_expiry_ms),
                 };
             value = value.checked_add(1).ok_or_else(|| {
                 io::Error::new(io::ErrorKind::InvalidData, "increment would overflow")

@@ -8,8 +8,7 @@ use mio::net::TcpStream;
 use mio_runtime::{EventLoop, StopHandle, Waker};
 
 use crate::{
-    engine::StorageEngine,
-    server::{CompactionCfg, WorkerHandler},
+    server::{Backend, CompactionCfg, WorkerHandler},
     stats::Stats,
 };
 
@@ -23,7 +22,7 @@ pub struct Worker {
 impl Worker {
     pub fn new(
         incoming: Receiver<TcpStream>,
-        engine: Arc<dyn StorageEngine>,
+        backend: Arc<Backend>,
         stats: Arc<Stats>,
         cfg: CompactionCfg,
         read_timeout_secs: Option<Duration>,
@@ -31,7 +30,7 @@ impl Worker {
         let event_loop = EventLoop::new(Duration::from_millis(512))?;
         let waker = event_loop.waker();
         let stop = event_loop.stop_handle();
-        let handler = WorkerHandler::new(engine, stats, cfg, incoming, read_timeout_secs);
+        let handler = WorkerHandler::new(backend, stats, cfg, incoming, read_timeout_secs);
         Ok(Self {
             event_loop,
             handler,

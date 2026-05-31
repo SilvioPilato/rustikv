@@ -7,7 +7,9 @@ pub mod workerhandler;
 
 pub use acceptor::Acceptor;
 pub use connection::{Connection, ConnectionAction, FrameParser};
-pub use dispatch::{CompactionCfg, dispatch, maybe_trigger_compaction};
+pub use dispatch::{
+    Backend, CompactionCfg, dispatch, dispatch_with_default_ttl, maybe_trigger_compaction, route,
+};
 pub use lifecycle::Server;
 pub use worker::Worker;
 pub use workerhandler::WorkerHandler;

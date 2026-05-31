@@ -791,7 +791,7 @@ impl StorageEngine for KVEngine {
         Ok(())
     }
 
-    fn incr(&self, key: &str) -> io::Result<i64> {
+    fn incr(&self, key: &str, default_expiry_ms: Option<u64>) -> io::Result<i64> {
         let now = now_ms();
         let (value, new_size, replaced) = {
             let mut wal = self.wal.lock().unwrap();
@@ -811,7 +811,8 @@ impl StorageEngine for KVEngine {
                         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
                     ttl,
                 ),
-                None => (0, None),
+                // New key: stamp the collection default TTL (if any).
+                None => (0, default_expiry_ms),
             };
             let next = current.checked_add(1).ok_or_else(|| {
                 io::Error::new(io::ErrorKind::InvalidData, "increment would overflow")

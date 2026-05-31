@@ -38,6 +38,10 @@ pub enum Command {
     MinRange(String, String),
     MaxPrefix(String),
     MaxRange(String, String),
+    Use(String),
+    CreateCollection(String, Option<u32>),
+    DropCollection(String),
+    ShowCollections,
 }
 
 #[repr(u8)]
@@ -66,6 +70,10 @@ pub enum OpCode {
     MinRange = 22,
     MaxPrefix = 23,
     MaxRange = 24,
+    Use = 25,
+    CreateCollection = 26,
+    DropCollection = 27,
+    ShowCollections = 28,
 }
 
 impl TryFrom<u8> for OpCode {
@@ -97,6 +105,10 @@ impl TryFrom<u8> for OpCode {
             22 => Ok(OpCode::MinRange),
             23 => Ok(OpCode::MaxPrefix),
             24 => Ok(OpCode::MaxRange),
+            25 => Ok(OpCode::Use),
+            26 => Ok(OpCode::CreateCollection),
+            27 => Ok(OpCode::DropCollection),
+            28 => Ok(OpCode::ShowCollections),
             n => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("unknown op code: {n}"),
@@ -232,6 +244,20 @@ pub fn decode_input_frame(buffer: &[u8]) -> io::Result<Command> {
             let end = read_key(&mut cur)?;
             Ok(Command::MaxRange(start, end))
         }
+        Ok(OpCode::Use) => Ok(Command::Use(read_key(&mut cur)?)),
+        Ok(OpCode::CreateCollection) => {
+            // | OpCode | flags(1) | name_len(2) | name | [default_ttl(4) if HAS_TTL] |
+            let flag = read_flags(&mut cur)?;
+            let name = read_key(&mut cur)?;
+            let default_ttl = if flag & FLAG_HAS_TTL != 0 {
+                Some(read_ttl(&mut cur)?)
+            } else {
+                None
+            };
+            Ok(Command::CreateCollection(name, default_ttl))
+        }
+        Ok(OpCode::DropCollection) => Ok(Command::DropCollection(read_key(&mut cur)?)),
+        Ok(OpCode::ShowCollections) => Ok(Command::ShowCollections),
         Err(_) => Ok(Command::Invalid(op_buf[0])),
     }
 }
@@ -613,6 +639,52 @@ pub fn encode_command(command: Command) -> Vec<u8> {
             payload.write_all(start.as_bytes()).unwrap();
             payload.write_all(&end_len.to_be_bytes()).unwrap();
             payload.write_all(end.as_bytes()).unwrap();
+            payload.into_inner()
+        }
+        Command::Use(name) => {
+            let total_len = (OP_CODE_SIZE + KEY_LEN_SIZE + name.len()) as u32;
+            let name_len = name.len() as u16;
+            payload.write_all(&total_len.to_be_bytes()).unwrap();
+            payload.write_all(&[OpCode::Use as u8]).unwrap();
+            payload.write_all(&name_len.to_be_bytes()).unwrap();
+            payload.write_all(name.as_bytes()).unwrap();
+            payload.into_inner()
+        }
+        Command::CreateCollection(name, default_ttl) => {
+            // | total_len(4) | OpCode(1) | flags(1) | name_len(2) | name | [ttl(4)] |
+            let (flags, seconds) = match default_ttl {
+                Some(secs) => (FLAG_HAS_TTL, Some(secs)),
+                None => (0u8, None),
+            };
+            let ttl_bytes = if seconds.is_some() { TTL_LEN_SIZE } else { 0 };
+            let total_len =
+                (OP_CODE_SIZE + FLAGS_LEN + KEY_LEN_SIZE + name.len() + ttl_bytes) as u32;
+            let name_len = name.len() as u16;
+            payload.write_all(&total_len.to_be_bytes()).unwrap();
+            payload
+                .write_all(&[OpCode::CreateCollection as u8])
+                .unwrap();
+            payload.write_all(&flags.to_be_bytes()).unwrap();
+            payload.write_all(&name_len.to_be_bytes()).unwrap();
+            payload.write_all(name.as_bytes()).unwrap();
+            if let Some(secs) = seconds {
+                payload.write_all(&secs.to_be_bytes()).unwrap();
+            }
+            payload.into_inner()
+        }
+        Command::DropCollection(name) => {
+            let total_len = (OP_CODE_SIZE + KEY_LEN_SIZE + name.len()) as u32;
+            let name_len = name.len() as u16;
+            payload.write_all(&total_len.to_be_bytes()).unwrap();
+            payload.write_all(&[OpCode::DropCollection as u8]).unwrap();
+            payload.write_all(&name_len.to_be_bytes()).unwrap();
+            payload.write_all(name.as_bytes()).unwrap();
+            payload.into_inner()
+        }
+        Command::ShowCollections => {
+            let total_len = OP_CODE_SIZE as u32;
+            payload.write_all(&total_len.to_be_bytes()).unwrap();
+            payload.write_all(&[OpCode::ShowCollections as u8]).unwrap();
             payload.into_inner()
         }
     }

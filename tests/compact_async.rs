@@ -23,6 +23,12 @@ impl ServerProcess {
             .arg(db_path)
             .arg("--tcp")
             .arg("0.0.0.0:0")
+            // Small segments so the test's writes roll into many segments and
+            // compaction has real, non-trivial work — guaranteeing a compaction
+            // window wide enough to observe (otherwise ~2 MB fits one 50 MB
+            // segment and compaction is near-instant, the root of the flake).
+            .arg("--max-segments-bytes")
+            .arg("65536")
             .spawn()
             .expect("failed to start server");
 
@@ -183,21 +189,6 @@ fn stat_u64(stats: &HashMap<String, String>, key: &str) -> u64 {
         .expect("invalid stats value")
 }
 
-fn wait_for_compacting_state(expected: &str) -> HashMap<String, String> {
-    let start = Instant::now();
-    let timeout = Duration::from_secs(3);
-    loop {
-        let stats = parse_stats(&send_command("STATS"));
-        if stats.get("compacting").map(|v| v.as_str()) == Some(expected) {
-            return stats;
-        }
-        if start.elapsed() > timeout {
-            panic!("compacting flag did not reach {expected} within timeout");
-        }
-        thread::sleep(Duration::from_millis(25));
-    }
-}
-
 #[test]
 fn stats_show_write_blocked_during_compaction() {
     let _guard = test_lock().lock().unwrap();
@@ -214,10 +205,32 @@ fn stats_show_write_blocked_during_compaction() {
     }
 
     assert_eq!(send_command("COMPACT"), "OK");
-    wait_for_compacting_state("true");
 
-    assert_eq!(send_command("WRITE late v"), "OK");
-    wait_for_compacting_state("false");
+    // The COMPACT handler sets `compacting=true` synchronously before replying,
+    // and it stays true until the background merge finishes. So instead of
+    // sampling the flag once and firing a single write that might miss the
+    // window (flaky under CPU contention — the merge can finish between the
+    // sample and the write), drive writes continuously until compaction
+    // completes. With the flag held for the whole merge, at least one of these
+    // writes is guaranteed to observe it, so `write_blocked_attempts` reliably
+    // increments. The generous deadline absorbs a compaction thread that's
+    // starved when the full suite runs in parallel.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut n = 0;
+    loop {
+        assert_eq!(send_command(&format!("WRITE late{n} v")), "OK");
+        n += 1;
+        let stats = parse_stats(&send_command("STATS"));
+        let finished = stat_u64(&stats, "compaction_count") >= 1
+            && stats.get("compacting").map(|v| v.as_str()) == Some("false");
+        if finished {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "compaction did not complete within the deadline"
+        );
+    }
 
     let stats = parse_stats(&send_command("STATS"));
     assert!(stat_u64(&stats, "write_blocked_attempts") >= 1);

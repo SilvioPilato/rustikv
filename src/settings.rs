@@ -1,3 +1,4 @@
+use std::fmt;
 use std::{
     env::{self},
     net::SocketAddr,
@@ -12,9 +13,25 @@ pub enum FSyncStrategy {
     Never,
 }
 
-pub enum StorageStrategy {
+#[derive(Copy, Clone)]
+pub enum StorageStrategyKind {
     SizeTiered,
     Leveled,
+}
+
+impl StorageStrategyKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            StorageStrategyKind::SizeTiered => "size-tiered",
+            StorageStrategyKind::Leveled => "leveled",
+        }
+    }
+}
+
+impl fmt::Display for StorageStrategyKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 pub enum BlockCompression {
@@ -37,7 +54,7 @@ pub struct Settings {
     pub engine: EngineType,
     pub compaction_ratio: f32,
     pub compaction_max_segment: usize,
-    pub storage_strategy: StorageStrategy,
+    pub storage_strategy: StorageStrategyKind,
     pub leveled_num_levels: usize,
     pub leveled_l0_threshold: usize,
     pub leveled_l1_max_bytes: u64,
@@ -68,7 +85,7 @@ impl Settings {
             engine: EngineType::KV,
             compaction_ratio: 0.0,
             compaction_max_segment: 0,
-            storage_strategy: StorageStrategy::SizeTiered,
+            storage_strategy: StorageStrategyKind::SizeTiered,
             leveled_num_levels: 4,
             leveled_l0_threshold: 4,
             leveled_l1_max_bytes: 10 * 1024 * 1024,
@@ -288,10 +305,10 @@ impl Settings {
         }
     }
 
-    fn parse_storage_strategy(s: &str) -> Result<StorageStrategy, String> {
+    fn parse_storage_strategy(s: &str) -> Result<StorageStrategyKind, String> {
         match s {
-            "leveled" => Ok(StorageStrategy::Leveled),
-            "size-tiered" => Ok(StorageStrategy::SizeTiered),
+            "leveled" => Ok(StorageStrategyKind::Leveled),
+            "size-tiered" => Ok(StorageStrategyKind::SizeTiered),
             _ => Err(format!("Unsupported storage strategy provided: {s}")),
         }
     }

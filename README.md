@@ -182,6 +182,15 @@ The server uses a **binary length-prefixed protocol** (not plain text). Each req
 | `MIN <start> <end>` | 22 | **LSM only.** Returns the minimum of live numeric values in the inclusive range `[start, end]`. Returns "Not found" if no keys match or `start > end`. Returns an error on the KV engine |
 | `MAX <prefix>` | 23 | **LSM only.** Returns the maximum of live numeric values whose keys start with `<prefix>`. Returns "Not found" on empty match. Returns an error on the KV engine |
 | `MAX <start> <end>` | 24 | **LSM only.** Returns the maximum of live numeric values in the inclusive range `[start, end]`. Returns "Not found" if no keys match or `start > end`. Returns an error on the KV engine |
+| `USE <collection>` | 25 | **LSM only.** Sets the active collection for this connection; all later commands operate on it. Errors if the collection does not exist. New connections start on the default collection (named from `--name`) |
+| `CREATE COLLECTION <name> [default_ttl_secs]` | 26 | **LSM only.** Creates a new collection (independent keyspace) named `<name>` (charset `[A-Za-z0-9-]+`). Optional default TTL in seconds is applied to writes/`INCR` that don't specify one (`0` / omitted = no default expiry). Errors if the name is invalid or already exists. Errors on the KV engine |
+| `DROP COLLECTION <name>` | 27 | **LSM only.** Deletes a collection and its data files, updating the catalog. Cannot drop the default collection. Errors if absent or on the KV engine |
+| `SHOW COLLECTIONS` | 28 | **LSM only.** Lists every collection as `name⇥default_ttl_secs`, sorted by name. Errors on the KV engine |
+
+#### Collection notes
+
+* **Per-collection config is captured at creation time.** Each collection records its full engine config (memtable size, block size/compression, storage strategy, leveled params) in the catalog and reopens with exactly those settings. Changing the corresponding CLI flags (`--block-size-kb`, `--block-compression`, `--storage-strategy`, `--max-segments-bytes`) on a later start does **not** retune collections that already exist — including the default — so SSTables always reopen with the settings they were written with. New collections created after the change pick up the new values.
+* **The default collection name is the `--name` value** (default `segment`) and, under the LSM engine, must match the same `[A-Za-z0-9-]+` charset as any other collection. Starting the LSM server with an out-of-charset `--name` fails fast with a clear error rather than booting once and failing to reload later.
 
 ### STATS fields
 

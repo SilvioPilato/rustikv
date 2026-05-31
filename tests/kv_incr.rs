@@ -34,7 +34,7 @@ fn make_engine(suffix: &str) -> KVEngine {
 #[test]
 fn incr_creates_missing_key_at_one() {
     let engine = make_engine("create");
-    assert_eq!(engine.incr("counter").unwrap(), 1);
+    assert_eq!(engine.incr("counter", None).unwrap(), 1);
     assert_eq!(engine.get("counter").unwrap().unwrap().1, "1");
 }
 
@@ -42,8 +42,8 @@ fn incr_creates_missing_key_at_one() {
 fn incr_increments_existing() {
     let engine = make_engine("existing");
     engine.set("c", "41").unwrap();
-    assert_eq!(engine.incr("c").unwrap(), 42);
-    assert_eq!(engine.incr("c").unwrap(), 43);
+    assert_eq!(engine.incr("c", None).unwrap(), 42);
+    assert_eq!(engine.incr("c", None).unwrap(), 43);
     assert_eq!(engine.get("c").unwrap().unwrap().1, "43");
 }
 
@@ -51,7 +51,7 @@ fn incr_increments_existing() {
 fn incr_handles_negative_values() {
     let engine = make_engine("negative");
     engine.set("c", "-5").unwrap();
-    assert_eq!(engine.incr("c").unwrap(), -4);
+    assert_eq!(engine.incr("c", None).unwrap(), -4);
 }
 
 // --- error cases (must not mutate) ---
@@ -60,7 +60,7 @@ fn incr_handles_negative_values() {
 fn incr_on_non_integer_errors_and_leaves_value_intact() {
     let engine = make_engine("non_int");
     engine.set("c", "abc").unwrap();
-    assert!(engine.incr("c").is_err());
+    assert!(engine.incr("c", None).is_err());
     // value unchanged — the failed parse happens before any write
     assert_eq!(engine.get("c").unwrap().unwrap().1, "abc");
 }
@@ -69,7 +69,7 @@ fn incr_on_non_integer_errors_and_leaves_value_intact() {
 fn incr_overflow_errors_and_leaves_value_intact() {
     let engine = make_engine("overflow");
     engine.set("c", &i64::MAX.to_string()).unwrap();
-    assert!(engine.incr("c").is_err());
+    assert!(engine.incr("c", None).is_err());
     assert_eq!(engine.get("c").unwrap().unwrap().1, i64::MAX.to_string());
 }
 
@@ -82,7 +82,7 @@ fn incr_overwrite_accumulates_dead_bytes() {
     let engine = make_engine("dead_bytes");
     engine.set("c", "1").unwrap();
     let dead_before = engine.dead_bytes();
-    engine.incr("c").unwrap();
+    engine.incr("c", None).unwrap();
     assert!(
         engine.dead_bytes() > dead_before,
         "overwriting via incr should mark the previous record dead"
@@ -96,7 +96,7 @@ fn incr_preserves_existing_ttl() {
     let engine = make_engine("preserve_ttl");
     let expiry_ms = now_ms() + 500;
     engine.set_with_ttl("c", "5", Some(expiry_ms)).unwrap();
-    assert_eq!(engine.incr("c").unwrap(), 6);
+    assert_eq!(engine.incr("c", None).unwrap(), 6);
     // The original expiry survives the increment, so the key still expires.
     thread::sleep(Duration::from_millis(750));
     assert!(
@@ -117,7 +117,7 @@ fn incr_is_atomic_under_concurrency() {
             let e = Arc::clone(&engine);
             thread::spawn(move || {
                 for _ in 0..500 {
-                    e.incr("counter").unwrap();
+                    e.incr("counter", None).unwrap();
                 }
             })
         })
