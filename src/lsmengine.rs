@@ -1,4 +1,4 @@
-use std::ops::Bound::{Included, Unbounded};
+use std::ops::Bound::{Excluded, Included, Unbounded};
 use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
@@ -566,9 +566,12 @@ impl RangeScan for LsmEngine {
         {
             let storage_strategy = self.shared.storage_strategy.read().unwrap();
             for segment in storage_strategy.iter_files_for_range(start, end) {
-                for result in segment.iter()? {
+                // Seek to `start` and stop past `end` via the sparse index
+                // instead of scanning the whole file. The seek block may hold a
+                // few records < start, so keep that lower-bound filter.
+                for result in segment.iter_range(start, Included(end.to_string()))? {
                     let record = result?;
-                    if record.key.as_str() < start || record.key.as_str() > end {
+                    if record.key.as_str() < start {
                         continue;
                     }
 
@@ -636,7 +639,14 @@ impl RangeScan for LsmEngine {
                 None => storage_strategy.iter_all().collect(),
             };
             for segment in segments {
-                for result in segment.iter()? {
+                // Seek to `prefix` and stop at its successor when one exists;
+                // with no finite successor, scan to EOF. `starts_with` guards
+                // correctness either way.
+                let iter = match successor.as_deref() {
+                    Some(end) => segment.iter_range(prefix, Excluded(end.to_string()))?,
+                    None => segment.iter()?,
+                };
+                for result in iter {
                     let record = result?;
                     if !record.key.starts_with(prefix) {
                         continue; // Inv 1
@@ -707,7 +717,11 @@ impl RangeScan for LsmEngine {
                 None => storage_strategy.iter_all().collect(),
             };
             for segment in segments {
-                for result in segment.iter()? {
+                let iter = match successor.as_deref() {
+                    Some(end) => segment.iter_range(prefix, Excluded(end.to_string()))?,
+                    None => segment.iter()?,
+                };
+                for result in iter {
                     let record = result?;
                     if !record.key.starts_with(prefix) {
                         continue; // Inv 1
@@ -777,9 +791,10 @@ impl RangeScan for LsmEngine {
         {
             let storage_strategy = self.shared.storage_strategy.read().unwrap();
             for segment in storage_strategy.iter_files_for_range(start, end) {
-                for result in segment.iter()? {
+                // Seek to `start` and stop past `end` via the sparse index.
+                for result in segment.iter_range(start, Included(end.to_string()))? {
                     let record = result?;
-                    if record.key.as_str() < start || record.key.as_str() > end {
+                    if record.key.as_str() < start {
                         continue;
                     }
                     if let Some(expiry_ms) = record.header.expiry_ms
