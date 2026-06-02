@@ -9,23 +9,9 @@ name = "rustikli"
 path = "src/bin/rustikli.rs"
 
 [[bin]]
-name = "kvbench"
-path = "src/bin/kvbench.rs"
-
-[[bin]]
 name = "rustikv"
 path = "src/main.rs"
 
-[[bin]]
-name = "engbench"
-path = "src/bin/engbench.rs"
-
-[[bin]]
-name = "redis-compare"
-path = "src/bin/redis-compare.rs"
-
 [dependencies]
-sled = "0.34"
-redis = "0.27"
 mio-runtime = { git = "https://github.com/SilvioPilato/mio-runtime.git", version = "0.1.0" }
 mio = { version = "1.2.0", features = ["net"] }
