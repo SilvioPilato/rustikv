@@ -1,6 +1,7 @@
 use std::{
     fs::{File, OpenOptions, read_dir},
     io::{self, BufReader, ErrorKind, Read, Seek, Write},
+    ops::Bound,
     path::PathBuf,
     time::SystemTime,
 };
@@ -38,6 +39,8 @@ pub struct SSTableIter {
     current_block: Vec<u8>,
     block_pos: usize,
     done: bool,
+    /// Upper bound; iteration stops once a key passes it. `Unbounded` scans to EOF.
+    upper: Bound<String>,
 }
 
 impl Iterator for SSTableIter {
@@ -54,6 +57,17 @@ impl Iterator for SSTableIter {
                 match Record::read_next(&mut slice) {
                     Ok(record) => {
                         self.block_pos += before - slice.len();
+                        // Keys are sorted ascending, so once one passes the
+                        // upper bound every later record does too — stop.
+                        let past_upper = match &self.upper {
+                            Bound::Included(end) => record.key.as_str() > end.as_str(),
+                            Bound::Excluded(end) => record.key.as_str() >= end.as_str(),
+                            Bound::Unbounded => false,
+                        };
+                        if past_upper {
+                            self.done = true;
+                            return None;
+                        }
                         return Some(Ok(record));
                     }
                     Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
@@ -203,6 +217,7 @@ impl SSTable {
             file: reader,
             current_block: Vec::new(),
             done: false,
+            upper: Bound::Unbounded,
         };
         let now_ms = now_ms();
         for result in iter {
@@ -235,6 +250,27 @@ impl SSTable {
             block_pos: 0,
             current_block: Vec::new(),
             done: false,
+            upper: Bound::Unbounded,
+        })
+    }
+
+    /// Iterate records from `start` up to `upper`, seeking to the right block
+    /// via the sparse index instead of scanning from the beginning.
+    ///
+    /// The seek lands on the block whose first key is `<= start`, so the first
+    /// block may contain a few records `< start`; the caller filters those.
+    /// Iteration stops as soon as a key passes `upper`.
+    pub fn iter_range(&self, start: &str, upper: Bound<String>) -> io::Result<SSTableIter> {
+        let offset = self.get_offset(start);
+        let file = OpenOptions::new().read(true).open(&self.path)?;
+        let mut reader = BufReader::new(file);
+        reader.seek(io::SeekFrom::Start(offset))?;
+        Ok(SSTableIter {
+            file: reader,
+            block_pos: 0,
+            current_block: Vec::new(),
+            done: false,
+            upper,
         })
     }
 
@@ -369,4 +405,113 @@ pub fn get_sstables(dir: &str, db_name: &str) -> io::Result<Vec<SSTable>> {
         table.rebuild_index()?;
     }
     Ok(tables)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::memtable::Memtable;
+    use std::ops::Bound;
+    use std::time::SystemTime;
+
+    fn tmp(suffix: &str) -> String {
+        let nanos = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let mut p = std::env::temp_dir();
+        p.push(format!("sstable_iter_range_{}_{}", suffix, nanos));
+        std::fs::create_dir_all(&p).unwrap();
+        p.to_string_lossy().into_owned()
+    }
+
+    /// 100 sorted keys k000..k099 written with a tiny block size, forcing many
+    /// blocks so `iter_range` must seek via the sparse index rather than scan
+    /// from the start.
+    fn multiblock(dir: &str) -> SSTable {
+        let mut mt = Memtable::new();
+        for i in 0..100u32 {
+            mt.insert(format!("k{:03}", i), format!("v{:03}", i), None);
+        }
+        SSTable::from_memtable(dir, "test", &mt, None, 48, true).unwrap()
+    }
+
+    #[test]
+    fn iter_range_inclusive_returns_exact_subset_across_blocks() {
+        let dir = tmp("inclusive");
+        let sst = multiblock(&dir);
+        let got: Vec<String> = sst
+            .iter_range("k010", Bound::Included("k020".to_string()))
+            .unwrap()
+            .map(|r| r.unwrap().key)
+            .collect();
+        let expected: Vec<String> = (10..=20).map(|i| format!("k{:03}", i)).collect();
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn iter_range_excluded_upper_omits_the_boundary_key() {
+        let dir = tmp("excluded");
+        let sst = multiblock(&dir);
+        let got: Vec<String> = sst
+            .iter_range("k010", Bound::Excluded("k020".to_string()))
+            .unwrap()
+            .map(|r| r.unwrap().key)
+            .collect();
+        let expected: Vec<String> = (10..20).map(|i| format!("k{:03}", i)).collect();
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn iter_range_start_before_all_keys_reads_from_first_key() {
+        let dir = tmp("before_all");
+        let sst = multiblock(&dir);
+        let got: Vec<String> = sst
+            .iter_range("a", Bound::Included("k003".to_string()))
+            .unwrap()
+            .map(|r| r.unwrap().key)
+            .collect();
+        let expected: Vec<String> = (0..=3).map(|i| format!("k{:03}", i)).collect();
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn iter_range_unbounded_upper_reads_through_eof() {
+        let dir = tmp("unbounded");
+        let sst = multiblock(&dir);
+        let got: Vec<String> = sst
+            .iter_range("k095", Bound::Unbounded)
+            .unwrap()
+            .map(|r| r.unwrap().key)
+            .collect();
+        let expected: Vec<String> = (95..100).map(|i| format!("k{:03}", i)).collect();
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn iter_range_yields_tombstones_within_bounds() {
+        let dir = tmp("tombstone");
+        let mut mt = Memtable::new();
+        for i in 0..100u32 {
+            mt.insert(format!("k{:03}", i), format!("v{:03}", i), None);
+        }
+        mt.remove("k050".to_string());
+        let sst = SSTable::from_memtable(&dir, "test", &mt, None, 48, true).unwrap();
+
+        let recs: Vec<(String, bool)> = sst
+            .iter_range("k048", Bound::Included("k052".to_string()))
+            .unwrap()
+            .map(|r| {
+                let rec = r.unwrap();
+                (rec.key, rec.header.is_tombstone())
+            })
+            .collect();
+
+        let keys: Vec<&str> = recs.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(keys, vec!["k048", "k049", "k050", "k051", "k052"]);
+        assert!(
+            recs.iter().any(|(k, tomb)| k == "k050" && *tomb),
+            "k050 should be a tombstone, got {recs:?}"
+        );
+    }
 }
